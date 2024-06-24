@@ -64,7 +64,7 @@ def test_disconnect():
 
 @app.route('/')
 def hello():
-    return '<p>Hello, new World!</p>'
+    return 'Hello, new World!'
 
 def clean_book_name(name):
     return ' '.join(word.capitalize() for word in name.replace('_', ' ').replace('-', ' ').split())
