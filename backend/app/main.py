@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request, url_for
+from flask import Flask, jsonify, request, url_for, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 # from process_book import book_main, lookup_summary, lookup_book_summary
@@ -13,7 +13,7 @@ import logging
 from flask_socketio import SocketIO, emit
 import json
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder=os.path.join(os.getcwd(), 'static'))
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
@@ -62,9 +62,18 @@ def test_connect():
 def test_disconnect():
     print('Client disconnected')
 
+@app.route('/debug/paths', methods=['GET'])
+def debug_paths():
+    return jsonify(
+        current_working_directory=os.getcwd(),
+        static_folder=app.static_folder,
+        template_folder=app.template_folder
+    )
+
+
 @app.route('/')
 def hello():
-    return 'Hello, new World!'
+    return 'Hello, new fucking World!'
 
 def clean_book_name(name):
     return ' '.join(word.capitalize() for word in name.replace('_', ' ').replace('-', ' ').split())
@@ -91,6 +100,10 @@ def get_epub_cover(epub_path):
 
         cover_path = os.path.join(os.path.dirname(rootfile_path), cover_href)
         return z.open(cover_path)
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory('static', filename)
 
 @app.route('/get-books')
 def get_books():
@@ -228,4 +241,7 @@ def upload_epub():
 
 if __name__ == '__main__':
     # app.run(debug=True)
-    socketio.run(app, host='0.0.0.0', port=8000, debug=True)
+    print("Current Working Directory:", os.getcwd())
+    print("Static Folder:", app.static_folder)
+    print("Template Folder:", app.template_folder)
+    socketio.run(app, host='0.0.0.0', port=8000,  debug=True)
