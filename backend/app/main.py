@@ -13,6 +13,7 @@ import logging
 from flask_socketio import SocketIO, emit
 import json
 
+# app = Flask(__name__, static_folder='static')
 app = Flask(__name__, static_folder=os.path.join(os.getcwd(), 'static'))
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
