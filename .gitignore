@@ -92,4 +92,5 @@ dmypy.json
 
 static/*
 
+.env
 

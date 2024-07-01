@@ -11,7 +11,8 @@ import os
 import threading
 import logging
 from flask_socketio import SocketIO, emit
-import json
+from dotenv import load_dotenv
+# import json
 
 # app = Flask(__name__, static_folder='static')
 app = Flask(__name__, static_folder=os.path.join(os.getcwd(), 'static'))
@@ -71,9 +72,12 @@ def debug_paths():
         template_folder=app.template_folder
     )
 
+load_dotenv()
 
 @app.route('/')
 def hello():
+    logging.info("the mongo uri is", os.environ.get('MONGODB_URI'))
+    print("hello there", os.environ.get('MONGODB_URI'))
     return 'Hello, new beautiful World!'
 
 def clean_book_name(name):
@@ -158,34 +162,34 @@ def upload_epub():
 
     return jsonify({"message": "File upload successful", "filename": filename})
 
-# @app.route('/process-epub', methods=['POST'])
-# def process_epub():
-#     logging.info("Inside process_epub")
-#     data = request.get_json()
-#     filename = data.get('filename')
+@app.route('/process-epub', methods=['POST'])
+def process_epub():
+    logging.info("Inside process_epub")
+    data = request.get_json()
+    filename = data.get('filename')
 
-#     if not filename:
-#         return 'No filename provided', 400
+    if not filename:
+        return 'No filename provided', 400
 
-#     file_path = os.path.join(BOOKS_DIR, filename)
-#     logging.info("The books_dir is %s and the filename is %s", BOOKS_DIR, filename)
-#     logging.info("The file path is: %s", file_path)
+    file_path = os.path.join(BOOKS_DIR, filename)
+    logging.info("The books_dir is %s and the filename is %s", BOOKS_DIR, filename)
+    logging.info("The file path is: %s", file_path)
 
-#     if not os.path.exists(file_path):
-#         logging.info("The file not found")
-#         return 'File not found', 404
+    if not os.path.exists(file_path):
+        logging.info("The file not found")
+        return 'File not found', 404
 
-#     book_name = os.path.splitext(filename)[0]
-#     json_path = os.path.join(JSON_DIR, book_name + '.json')
-#     embeddings_path = os.path.join(EMB_DIR, book_name + '.npy')
+    book_name = os.path.splitext(filename)[0]
+    json_path = os.path.join(JSON_DIR, book_name + '.json')
+    embeddings_path = os.path.join(EMB_DIR, book_name + '.npy')
 
-#     logging.info("Starting a new thread for processing the ePub file and json path is %s", json_path)
-#     thread = threading.Thread(target=book_main, args=(file_path, socketio, json_path, embeddings_path))
-#     thread.start()
+    logging.info("Starting a new thread for processing the ePub file and json path is %s", json_path)
+    thread = threading.Thread(target=book_main, args=(file_path, socketio, json_path, embeddings_path))
+    thread.start()
 
-#     book_chat.reset_index()
+    # book_chat.reset_index()
 
-#     return jsonify({"message": "Book processing initiated", "filename": filename})
+    return jsonify({"message": "Book processing initiated", "filename": filename})
 
 # @app.route('/book-summary/<path:book_title>', methods=['GET'])
 # def book_summary(book_title):

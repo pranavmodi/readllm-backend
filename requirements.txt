@@ -5,3 +5,5 @@ flask-cors==3.0.10
 Pillow==10.0.0
 lxml==4.9.3
 Flask-SocketIO==5.3.4
+pymongo[srv]==4.8.0
+python-dotenv==0.21.1
