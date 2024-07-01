@@ -74,7 +74,7 @@ def debug_paths():
 
 @app.route('/')
 def hello():
-    return 'Hello, new fucking World!'
+    return 'Hello, new beautiful World!'
 
 def clean_book_name(name):
     return ' '.join(word.capitalize() for word in name.replace('_', ' ').replace('-', ' ').split())
