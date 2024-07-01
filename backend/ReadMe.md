@@ -1,0 +1,1 @@
+One of the ideas behind this app is to make it not user-centric, but knowledge centric - it's about challenging the user, causing some discomfort, provoking growth. And growth is a somewhat painful, but ultimately rewarding process. Technology cannot change that, and should not attempt to. 
