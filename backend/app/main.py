@@ -3,6 +3,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 # from process_book import book_main, lookup_summary, lookup_book_summary
 # from readai import chat_response, create_book_index
+from process_book import book_main
 from PIL import Image
 from io import BytesIO
 import zipfile
@@ -11,7 +12,6 @@ import os
 import threading
 import logging
 from flask_socketio import SocketIO, emit
-from dotenv import load_dotenv
 # import json
 
 # app = Flask(__name__, static_folder='static')
@@ -72,12 +72,9 @@ def debug_paths():
         template_folder=app.template_folder
     )
 
-load_dotenv()
 
 @app.route('/')
 def hello():
-    logging.info("the mongo uri is", os.environ.get('MONGODB_URI'))
-    print("hello there", os.environ.get('MONGODB_URI'))
     return 'Hello, new beautiful World!'
 
 def clean_book_name(name):

@@ -94,3 +94,5 @@ static/*
 
 .env
 
+backend/app/scratch.py
+
