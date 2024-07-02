@@ -5,7 +5,7 @@ import pymongo
 import logging
 import json
 from pymongo.errors import ConnectionFailure
-# from readai import summarize_book_chapter, summarize_summaries, call_standalone_embedding_script
+from readai import summarize_book_chapter, summarize_summaries, call_standalone_embedding_script
 from bs4 import BeautifulSoup
 import numpy as np
 import faiss
@@ -28,8 +28,6 @@ db = client.your_database_name
 
 # Function to connect to MongoDB
 def connect_to_mongodb():
-    # client = MongoClient('mongodb://localhost:27017/')
-    # client = MongoClient('mongodb://172.18.0.2:27017/')
     try:
         mongodb_uri = os.environ.get('MONGODB_URI')
         client = MongoClient(mongodb_uri, tlsCAFile=certifi.where())
@@ -111,69 +109,69 @@ def check_summaries(file_path, collection, rewrite=False, socketio=None):
         return False
 
 
-# def process_epub(file_path, collection, socketio, rewrite=False):
-#     logging.info("wth Inside process_epub, the file_path is %s", file_path)
-#     book = epub.read_epub(file_path)
-#     chapter_count = 0  # Initialize a counter for chapters
-#     book_title = book.get_metadata('DC', 'title')[0][0]
-#     logging.info("book_title is %s", book_title)
-#     chapter_summaries = []
-
-#     total_chapters = len(list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT)))
-
-#     for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
-#         chapter_count += 1  # Increment the chapter count
-#         chapter_content = item.get_body_content().decode()
-
-#         # Create a unique identifier for each chapter, for example, using book title and chapter number
-#         chapter_uri = item.file_name
-#         chapter_identifier = f"{book_title}_Chapter_{chapter_uri}"
-
-#         # Check if the summary for this chapter already exists in the database
-#         existing_summary = collection.find_one({"chapter_identifier": chapter_identifier})
-#         if existing_summary is None or rewrite is True or existing_summary.get('chapter_summary') is None:
-#             # Summary not found in database, generate it
-#             chapter_summary = summarize_book_chapter(chapter_content)
-#             chapter_summaries.append({'chapter_summary': chapter_summary})
-
-#             # Store the chapter summary, count, and identifier in the database
-#             document = {
-#                 'book': book_title,
-#                 'chapter_count': chapter_count,
-#                 'chapter_summary': chapter_summary,
-#                 'chapter_identifier': chapter_identifier
-#             }
-#             collection.insert_one(document)
-#         else:
-#             # Summary already exists, skip processing
-#             chapter_summaries.append(existing_summary)
-
-#         # Emit progress update
-#         if socketio:
-#             progress = int((chapter_count / (total_chapters + 1)) * 100)
-#             socketio.emit('progress_update', {'progress': progress})
-
-#     # Now summarizing all the chapters to get a unified summary of the book as a whole
-#     existing_book_summary = lookup_book_summary(book_title)
-#     if existing_book_summary:
-#         logging.info("Book summary already exists, skipping processing for book")
-#     else:
-#         consolidated_summary = summarize_summaries(" ".join(chapter['chapter_summary']['summary'] for chapter in chapter_summaries if 'chapter_summary' in chapter and chapter['chapter_summary']['is_main_content']))
-#         document = {
-#             'book': book_title,
-#             'is_book_summary': True,  # Flag to indicate that this is a book summary
-#             'book_summary': consolidated_summary
-#         }
-#         logging.info("wtf is going on")
-#         collection.insert_one(document)
-#     if socketio:
-#         progress = int(((chapter_count + 1) / (total_chapters + 1)) * 100)
-#         socketio.emit('progress_update', {'progress': progress})
-
-#     socketio.emit('disconnect', {'book_title': book_title})
-
 def process_epub(file_path, collection, socketio, rewrite=False):
-    print("going to process epub")
+    logging.info("wth Inside process_epub, the file_path is %s", file_path)
+    book = epub.read_epub(file_path)
+    chapter_count = 0  # Initialize a counter for chapters
+    book_title = book.get_metadata('DC', 'title')[0][0]
+    logging.info("book_title is %s", book_title)
+    chapter_summaries = []
+
+    total_chapters = len(list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT)))
+
+    for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+        chapter_count += 1  # Increment the chapter count
+        chapter_content = item.get_body_content().decode()
+
+        # Create a unique identifier for each chapter, for example, using book title and chapter number
+        chapter_uri = item.file_name
+        chapter_identifier = f"{book_title}_Chapter_{chapter_uri}"
+
+        # Check if the summary for this chapter already exists in the database
+        existing_summary = collection.find_one({"chapter_identifier": chapter_identifier})
+        if existing_summary is None or rewrite is True or existing_summary.get('chapter_summary') is None:
+            # Summary not found in database, generate it
+            chapter_summary = summarize_book_chapter(chapter_content)
+            chapter_summaries.append({'chapter_summary': chapter_summary})
+
+            # Store the chapter summary, count, and identifier in the database
+            document = {
+                'book': book_title,
+                'chapter_count': chapter_count,
+                'chapter_summary': chapter_summary,
+                'chapter_identifier': chapter_identifier
+            }
+            collection.insert_one(document)
+        else:
+            # Summary already exists, skip processing
+            chapter_summaries.append(existing_summary)
+
+        # Emit progress update
+        if socketio:
+            progress = int((chapter_count / (total_chapters + 1)) * 100)
+            socketio.emit('progress_update', {'progress': progress})
+
+    # Now summarizing all the chapters to get a unified summary of the book as a whole
+    existing_book_summary = lookup_book_summary(book_title)
+    if existing_book_summary:
+        logging.info("Book summary already exists, skipping processing for book")
+    else:
+        consolidated_summary = summarize_summaries(" ".join(chapter['chapter_summary']['summary'] for chapter in chapter_summaries if 'chapter_summary' in chapter and chapter['chapter_summary']['is_main_content']))
+        document = {
+            'book': book_title,
+            'is_book_summary': True,  # Flag to indicate that this is a book summary
+            'book_summary': consolidated_summary
+        }
+        logging.info("wtf is going on")
+        collection.insert_one(document)
+    if socketio:
+        progress = int(((chapter_count + 1) / (total_chapters + 1)) * 100)
+        socketio.emit('progress_update', {'progress': progress})
+
+    socketio.emit('disconnect', {'book_title': book_title})
+
+# def process_epub(file_path, collection, socketio, rewrite=False):
+#     print("going to process epub")
 
 # Function to create indexes in MongoDB
 def create_indexes(collection):
