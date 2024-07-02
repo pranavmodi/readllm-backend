@@ -4,7 +4,7 @@ from pymongo import MongoClient
 import pymongo
 import logging
 import json
-from pymongo.errors import ConnectionFailure
+from pymongo.errors import ConnectionFailure, OperationFailure
 # from .readai import summarize_book_chapter, summarize_summaries, call_standalone_embedding_script
 from backend.app.readai import summarize_book_chapter, summarize_summaries, call_standalone_embedding_script
 from bs4 import BeautifulSoup
@@ -31,11 +31,13 @@ db = client.your_database_name
 def connect_to_mongodb():
     try:
         mongodb_uri = os.environ.get('MONGODB_URI')
+        logging.info("the mongo uri is %s", mongodb_uri)
         client = MongoClient(mongodb_uri, tlsCAFile=certifi.where())
         client.admin.command('ismaster')
     except ConnectionFailure:
-        print("Server not available")
-        logging.info("Server not available")
+        print("Failed to connect to MongoDB")
+    except OperationFailure as e:
+        print(f"Authentication error: {e}")
     db = client['epub_reader_db']
     collection = db['insights']
     return collection
