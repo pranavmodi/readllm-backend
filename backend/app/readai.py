@@ -11,17 +11,15 @@ import subprocess
 
 
 
-def create_client():
-    # load_dotenv()  # Load environment variables from .env file
-    # import os
-    # print("Before load_dotenv:", os.getenv('OPENAI_API_KEY'))
-    load_dotenv()
-    openai_api_key = os.getenv('OPENAI_API_KEY')  # Retrieve the OpenAI API key
+global_client = None
 
-    # print("After load_dotenv:", os.getenv('OPENAI_API_KEY'))    
-    # print("the key is", openai_api_key)
-    client = OpenAI(api_key=openai_api_key)  # Initialize OpenAI client
-    return client
+def create_client():
+    global global_client
+    if global_client is None:
+        load_dotenv()
+        openai_api_key = os.getenv('OPENAI_API_KEY')
+        global_client = OpenAI(api_key=openai_api_key)
+    return global_client
 
 # Initialize OpenAI API key
 
@@ -279,8 +277,7 @@ def summarize_book_chapter(chapter_text):
 
 def summarize_summaries(chapter_summaries, client=None):
     print("Inside summarize_summaries")
-    if client is None:
-        client = create_client()  # Initialize client
+    client = create_client()  # Initialize client
 
     # Check if the token count exceeds the limit
     if num_tokens_from_string(chapter_summaries, 'r50k_base') > 4096:
