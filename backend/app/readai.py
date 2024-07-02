@@ -4,7 +4,7 @@ from dotenv import load_dotenv, find_dotenv
 import os
 import tiktoken
 import numpy as np
-import faiss
+# import faiss
 import logging
 from transformers import AutoTokenizer, AutoModel
 import subprocess
@@ -54,37 +54,37 @@ def load_embeddings(embedding_path):
         return None
     
 
-def create_faiss_index(embeddings):
-    dimension = embeddings.shape[1]
-    index = faiss.IndexFlatL2(dimension)
-    index.add(embeddings)
-    logging.info(f"FAISS index created with {len(embeddings)} embeddings.")
-    logging.info("Does the index get created every time????????")
-    return index
+# def create_faiss_index(embeddings):
+#     dimension = embeddings.shape[1]
+#     index = faiss.IndexFlatL2(dimension)
+#     index.add(embeddings)
+#     logging.info(f"FAISS index created with {len(embeddings)} embeddings.")
+#     logging.info("Does the index get created every time????????")
+#     return index
 
-def create_book_index(embedding_path):
-    embeddings = load_embeddings(embedding_path)
-    if embeddings is None:
-        return "Failed to load embeddings. Please try again later."
+# def create_book_index(embedding_path):
+#     embeddings = load_embeddings(embedding_path)
+#     if embeddings is None:
+#         return "Failed to load embeddings. Please try again later."
 
-    index = create_faiss_index(embeddings)
-    return index
+#     index = create_faiss_index(embeddings)
+#     return index
 
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+# os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-def search_faiss_index(index, query_embedding, top_k=5):
-    distances, indices = index.search(query_embedding, top_k)
-    return indices
+# def search_faiss_index(index, query_embedding, top_k=5):
+#     distances, indices = index.search(query_embedding, top_k)
+#     return indices
 
-def embed_query(query, model_name="sentence-transformers/all-MiniLM-L6-v2"):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModel.from_pretrained(model_name)
+# def embed_query(query, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+#     tokenizer = AutoTokenizer.from_pretrained(model_name)
+#     model = AutoModel.from_pretrained(model_name)
     
-    inputs = tokenizer(query, return_tensors='pt', truncation=True, padding=True)
-    outputs = model(**inputs)
-    query_embedding = outputs.last_hidden_state.mean(dim=1).detach().numpy()
+#     inputs = tokenizer(query, return_tensors='pt', truncation=True, padding=True)
+#     outputs = model(**inputs)
+#     query_embedding = outputs.last_hidden_state.mean(dim=1).detach().numpy()
     
-    return query_embedding
+#     return query_embedding
 
 def generate_openai_response(context, user_query):
     # prompt = f"""
@@ -111,28 +111,28 @@ def generate_openai_response(context, user_query):
     return completion.choices[0].message.content
     # return response.choices[0].text.strip()
 
-def chat_response(user_query, index, text_chunks, top_k=10):
-    model_name = "sentence-transformers/all-MiniLM-L6-v2"
-    query_embedding = call_standalone_embedding_script([user_query], model_name, batch_size=1)
-    logging.info(f"Query Embeddings shape: {query_embedding.shape}")
+# def chat_response(user_query, index, text_chunks, top_k=10):
+#     model_name = "sentence-transformers/all-MiniLM-L6-v2"
+#     query_embedding = call_standalone_embedding_script([user_query], model_name, batch_size=1)
+#     logging.info(f"Query Embeddings shape: {query_embedding.shape}")
 
-    # query_embedding = embed_query(user_query)
+#     # query_embedding = embed_query(user_query)
 
-    # Step 4: Search FAISS index for relevant sections
-    logging.info("going to search index")
-    indices = search_faiss_index(index, query_embedding, top_k)
+#     # Step 4: Search FAISS index for relevant sections
+#     logging.info("going to search index")
+#     indices = search_faiss_index(index, query_embedding, top_k)
 
-    # Step 5: Retrieve relevant sections
-    relevant_sections = [text_chunks[idx] for idx in indices[0]]
+#     # Step 5: Retrieve relevant sections
+#     relevant_sections = [text_chunks[idx] for idx in indices[0]]
 
-    [print(rs) for rs in relevant_sections]
+#     [print(rs) for rs in relevant_sections]
 
-    # Step 6: Generate OpenAI response using the relevant sections
-    context = " ".join(relevant_sections)
-    response = generate_openai_response(context, user_query)
-    logging.info("going to return response")
+#     # Step 6: Generate OpenAI response using the relevant sections
+#     context = " ".join(relevant_sections)
+#     response = generate_openai_response(context, user_query)
+#     logging.info("going to return response")
 
-    return response
+#     return response
 
 # # Example usage
 # if __name__ == '__main__':

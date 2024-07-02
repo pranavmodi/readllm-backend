@@ -5,7 +5,8 @@ import pymongo
 import logging
 import json
 from pymongo.errors import ConnectionFailure
-from .readai import summarize_book_chapter, summarize_summaries, call_standalone_embedding_script
+# from .readai import summarize_book_chapter, summarize_summaries, call_standalone_embedding_script
+from backend.app.readai import summarize_book_chapter, summarize_summaries, call_standalone_embedding_script
 from bs4 import BeautifulSoup
 import numpy as np
 import faiss

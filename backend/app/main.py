@@ -3,7 +3,8 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 # from process_book import book_main, lookup_summary, lookup_book_summary
 # from readai import chat_response, create_book_index
-from .process_book import book_main
+from backend.app.process_book import book_main
+# from .process_book import book_main
 from PIL import Image
 from io import BytesIO
 import zipfile
