@@ -165,7 +165,7 @@ def process_epub():
     logging.info("Inside process_epub")
     data = request.get_json()
     filename = data.get('filename')
-    book_title = data.get('name')
+    book_name = data.get('name')
 
     if not filename:
         return 'No filename provided', 400
@@ -178,12 +178,12 @@ def process_epub():
         logging.info("The file not found")
         return 'File not found', 404
 
-    book_name = os.path.splitext(filename)[0]
-    json_path = os.path.join(JSON_DIR, book_name + '.json')
-    embeddings_path = os.path.join(EMB_DIR, book_name + '.npy')
+    bname = os.path.splitext(filename)[0]
+    json_path = os.path.join(JSON_DIR, bname + '.json')
+    embeddings_path = os.path.join(EMB_DIR, bname + '.npy')
 
     logging.info("Starting a new thread for processing the ePub file and json path is %s", json_path)
-    thread = threading.Thread(target=book_main, args=(file_path, book_title, socketio, json_path, embeddings_path))
+    thread = threading.Thread(target=book_main, args=(file_path, book_name, socketio, json_path, embeddings_path))
     thread.start()
 
     return jsonify({"message": "Book processing initiated", "filename": filename})
