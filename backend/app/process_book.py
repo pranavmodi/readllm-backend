@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 logger.propagate = True
 logging.basicConfig(level=logging.INFO)
 
-mongodb_uri = os.environ.get('MONGODB_URI')
-client = MongoClient(mongodb_uri)
-db = client.your_database_name
+# mongodb_uri = os.environ.get('MONGODB_URI')
+# client = MongoClient(mongodb_uri)
+# db = client.your_database_name
 
 # Function to connect to MongoDB
 def connect_to_mongodb():
@@ -112,7 +112,7 @@ def check_summaries(file_path, collection, rewrite=False, socketio=None):
         return False
 
 
-def process_epub(file_path, collection, socketio, rewrite=False):
+def process_epub(file_path, book_name, collection, socketio, rewrite=False):
     logging.info("wth Inside process_epub, the file_path is %s", file_path)
     book = epub.read_epub(file_path)
     chapter_count = 0  # Initialize a counter for chapters
@@ -171,8 +171,9 @@ def process_epub(file_path, collection, socketio, rewrite=False):
         progress = int(((chapter_count + 1) / (total_chapters + 1)) * 100)
         socketio.emit('progress_update', {'progress': progress})
 
-    socketio.emit('disconnect', {'book_title': book_title})
-
+    print("Emitting processing_complete event", {'book_title': book_name})
+    socketio.emit('processing_complete', {'book_title': book_name})
+   
 # def process_epub(file_path, collection, socketio, rewrite=False):
 #     print("going to process epub")
 
@@ -205,11 +206,11 @@ def log_memory_usage(stage=""):
 
 
 
-def book_main(file_path, socketio, json_path, embeddings_path):
+def book_main(file_path, book_title, socketio, json_path, embeddings_path):
     logging.info('Processing book: %s', file_path)
     collection = connect_to_mongodb()
     create_indexes(collection)
-    process_epub(file_path, collection, socketio, False)
+    process_epub(file_path, book_title, collection, socketio, False)
     # embeddings = None
 
     # if os.path.exists(embeddings_path):

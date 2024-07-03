@@ -18,6 +18,7 @@ def create_client():
     if global_client is None:
         load_dotenv()
         openai_api_key = os.getenv('OPENAI_API_KEY')
+        print('the key', openai_api_key)
         global_client = OpenAI(api_key=openai_api_key)
     return global_client
 

@@ -3,7 +3,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 # from process_book import book_main, lookup_summary, lookup_book_summary
 # from readai import chat_response, create_book_index
-from backend.app.process_book import book_main
+from backend.app.process_book import book_main, lookup_book_summary, lookup_summary
 # from .process_book import book_main
 from PIL import Image
 from io import BytesIO
@@ -165,6 +165,7 @@ def process_epub():
     logging.info("Inside process_epub")
     data = request.get_json()
     filename = data.get('filename')
+    book_title = data.get('name')
 
     if not filename:
         return 'No filename provided', 400
@@ -182,44 +183,76 @@ def process_epub():
     embeddings_path = os.path.join(EMB_DIR, book_name + '.npy')
 
     logging.info("Starting a new thread for processing the ePub file and json path is %s", json_path)
-    thread = threading.Thread(target=book_main, args=(file_path, socketio, json_path, embeddings_path))
+    thread = threading.Thread(target=book_main, args=(file_path, book_title, socketio, json_path, embeddings_path))
     thread.start()
-
-    # book_chat.reset_index()
 
     return jsonify({"message": "Book processing initiated", "filename": filename})
 
-# @app.route('/book-summary/<path:book_title>', methods=['GET'])
-# def book_summary(book_title):
-#     logging.info("Inside book_summary, the requested book_title is %s", book_title)
-#     summary_document = lookup_book_summary(book_title)
-#     logging.info("summary_document is %s", summary_document)
+@app.route('/book-summary/<path:book_title>', methods=['GET'])
+def book_summary(book_title):
+    logging.info("Inside book_summary, the requested book_title is %s", book_title)
+    summary_document = lookup_book_summary(book_title)
+    logging.info("summary_document is %s", summary_document)
 
-#     if summary_document:
-#         return jsonify({
-#             "status": "success",
-#             "book_summary": summary_document
-#         })
-#     else:
-#         return jsonify({
-#             "status": "error",
-#             "message": "Summary not found for book: " + book_title
-#         }), 404
+    if summary_document:
+        return jsonify({
+            "status": "success",
+            "book_summary": summary_document
+        })
+    else:
+        return jsonify({
+            "status": "error",
+            "message": "Summary not found for book: " + book_title
+        }), 404
 
-# @app.route('/chapter-summary/<path:chapter_id>', methods=['GET'])
-# def get_summary(chapter_id):
-#     summary_document = lookup_summary(chapter_id)
+@app.route('/chapter-summary/<path:chapter_id>', methods=['GET'])
+def get_summary(chapter_id):
+    summary_document = lookup_summary(chapter_id)
 
-#     if summary_document:
-#         return jsonify({
-#             "status": "success",
-#             "chapter_summary": summary_document
-#         })
-#     else:
-#         return jsonify({
-#             "status": "pending",
-#             "message": "Summary is pending for chapter ID: " + chapter_id
-#         })
+    if summary_document:
+        return jsonify({
+            "status": "success",
+            "chapter_summary": summary_document
+        })
+    else:
+        return jsonify({
+            "status": "pending",
+            "message": "Summary is pending for chapter ID: " + chapter_id
+        })
+    
+
+@app.route('/book-summaries/<path:book_title>', methods=['GET'])
+def get_book_summaries(book_title):
+    # Function to lookup all summaries for a book
+    def lookup_book_summaries(book_title):
+        summaries = collection.find({"book": book_title, "is_book_summary": {"$ne": True}})
+        return list(summaries)
+
+    # Function to lookup the book summary
+    def lookup_book_summary(book_title):
+        return collection.find_one({"book": book_title, "is_book_summary": True})
+
+    chapter_summaries = lookup_book_summaries(book_title)
+    book_summary = lookup_book_summary(book_title)
+
+    if chapter_summaries or book_summary:
+        return jsonify({
+            "status": "success",
+            "book_summary": book_summary["book_summary"] if book_summary else None,
+            "chapter_summaries": [
+                {
+                    "chapter_number": summary["chapter_count"],
+                    "summary": summary["chapter_summary"]
+                }
+                for summary in sorted(chapter_summaries, key=lambda x: x["chapter_count"])
+            ]
+        })
+    else:
+        return jsonify({
+            "status": "pending",
+            "message": f"Summaries are pending for book: {book_title}"
+        })
+
 
 # @app.route('/chat_with_book', methods=['POST'])
 # def chat_with_book():
