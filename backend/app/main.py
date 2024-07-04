@@ -3,7 +3,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 # from process_book import book_main, lookup_summary, lookup_book_summary
 # from readai import chat_response, create_book_index
-from backend.app.process_book import book_main, lookup_book_summary, lookup_summary
+from backend.app.process_book import book_main, lookup_book_summary, lookup_summary, all_summaries
 # from .process_book import book_main
 from PIL import Image
 from io import BytesIO
@@ -190,9 +190,7 @@ def process_epub():
 
 @app.route('/book-summary/<path:book_title>', methods=['GET'])
 def book_summary(book_title):
-    logging.info("Inside book_summary, the requested book_title is %s", book_title)
     summary_document = lookup_book_summary(book_title)
-    logging.info("summary_document is %s", summary_document)
 
     if summary_document:
         return jsonify({
@@ -221,38 +219,40 @@ def get_summary(chapter_id):
         })
     
 
-@app.route('/book-summaries/<path:book_title>', methods=['GET'])
-def get_book_summaries(book_title):
-    # Function to lookup all summaries for a book
-    def lookup_book_summaries(book_title):
-        summaries = collection.find({"book": book_title, "is_book_summary": {"$ne": True}})
-        return list(summaries)
+@app.route('/all-summaries', methods=['POST'])
+def get_all_summaries():
+    data = request.json
+    book_name = data.get('bookName')
+    chapter_ids = data.get('chapterIds')
 
-    # Function to lookup the book summary
-    def lookup_book_summary(book_title):
-        return collection.find_one({"book": book_title, "is_book_summary": True})
-
-    chapter_summaries = lookup_book_summaries(book_title)
-    book_summary = lookup_book_summary(book_title)
-
-    if chapter_summaries or book_summary:
+    if not book_name or not chapter_ids:
         return jsonify({
-            "status": "success",
-            "book_summary": book_summary["book_summary"] if book_summary else None,
-            "chapter_summaries": [
-                {
-                    "chapter_number": summary["chapter_count"],
-                    "summary": summary["chapter_summary"]
-                }
-                for summary in sorted(chapter_summaries, key=lambda x: x["chapter_count"])
-            ]
-        })
-    else:
-        return jsonify({
-            "status": "pending",
-            "message": f"Summaries are pending for book: {book_title}"
-        })
+            "status": "error",
+            "message": "Missing book name or chapter IDs"
+        }), 400
 
+    summaries = all_summaries(chapter_ids)
+
+    response_data = {
+        "status": "success",
+        "summaries": {}
+    }
+
+    print('the response data is', response_data)
+
+    for chapter_id, summary in summaries.items():
+        if summary:
+            response_data["summaries"][chapter_id] = {
+                "status": "success",
+                "chapter_summary": summary
+            }
+        else:
+            response_data["summaries"][chapter_id] = {
+                "status": "pending",
+                "message": f"Summary is pending for chapter ID: {chapter_id}"
+            }
+
+    return jsonify(response_data)
 
 # @app.route('/chat_with_book', methods=['POST'])
 # def chat_with_book():

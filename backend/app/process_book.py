@@ -57,6 +57,8 @@ def lookup_summary(chapter_id):
     else:
         # Handle case where no summary is found
         return None
+    
+
 
 
 def lookup_book_summary(book_title):
@@ -70,6 +72,19 @@ def lookup_book_summary(book_title):
         # Handle case where no summary is found
         return None
     
+
+def all_summaries(chapter_ids):
+    collection = connect_to_mongodb()
+    summaries = {}
+
+    for chapter_id in chapter_ids:
+        summary_document = collection.find_one({"chapter_identifier": chapter_id})
+        if summary_document and 'chapter_summary' in summary_document:
+            summaries[chapter_id] = summary_document['chapter_summary']
+        else:
+            summaries[chapter_id] = None
+
+    return summaries
 
 def extract_text_to_json(epub_path, json_path, chunk_size):
     book = epub.read_epub(epub_path)
