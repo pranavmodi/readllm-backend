@@ -177,7 +177,6 @@ def process_epub(file_path, book_name, collection, socketio, rewrite=False):
         socketio.emit('progress_update', {'progress': progress})
 
     print("Emitting processing_complete event", {'book_name': book_name})
-    print(chapter_identifiers)
     socketio.emit('processing_complete', {'book_name': book_name})
    
 # def process_epub(file_path, collection, socketio, rewrite=False):
