@@ -15,7 +15,13 @@ import psutil
 import os
 from dotenv import load_dotenv
 import certifi
+import threading
+import time
 
+
+# Global in-memory cache
+summary_cache = {}
+cache_lock = threading.Lock()
 
 load_dotenv()
 
@@ -47,6 +53,111 @@ def connect_to_mongodb():
         mongo_collection = db['insights']
     return mongo_collection
 
+
+def process_epub(file_path, book_name, collection, socketio, rewrite=False):
+    logging.info("Inside process_epub, the file_path is %s", file_path)
+    book = epub.read_epub(file_path)
+    chapter_count = 0
+    chapter_summaries = []
+    chapter_identifiers = []
+
+    total_chapters = len(list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT)))
+
+    # Initialize book in cache
+    with cache_lock:
+        if book_name not in summary_cache:
+            summary_cache[book_name] = {}
+
+    for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+        chapter_count += 1
+        chapter_content = item.get_body_content().decode()
+
+        chapter_uri = item.file_name
+        chapter_identifier = f"{book_name}_Chapter_{chapter_uri}"
+        chapter_identifiers.append(chapter_identifier)
+
+        existing_summary = collection.find_one({"chapter_identifier": chapter_identifier})
+        if existing_summary is None or rewrite is True or existing_summary.get('chapter_summary') is None:
+            chapter_summary = summarize_book_chapter(chapter_content)
+            chapter_summaries.append({'chapter_summary': chapter_summary})
+
+            document = {
+                'book': book_name,
+                'chapter_count': chapter_count,
+                'chapter_summary': chapter_summary,
+                'chapter_identifier': chapter_identifier
+            }
+            collection.insert_one(document)
+
+            # Update cache
+            with cache_lock:
+                summary_cache[book_name][chapter_identifier] = chapter_summary
+        else:
+            chapter_summaries.append(existing_summary)
+            # Update cache with existing summary
+            with cache_lock:
+                summary_cache[book_name][chapter_identifier] = existing_summary.get('chapter_summary')
+
+        if socketio:
+            progress = int((chapter_count / (total_chapters + 1)) * 100)
+            socketio.emit('progress_update', {'progress': progress})
+
+    book_summary = lookup_book_summary(book_name)
+    if not book_summary:
+        book_summary = summarize_summaries(" ".join(chapter['chapter_summary']['summary'] for chapter in chapter_summaries if 'chapter_summary' in chapter and chapter['chapter_summary']['is_main_content']))
+        document = {
+            'book': book_name,
+            'is_book_summary': True,
+            'book_summary': book_summary
+        }
+        collection.insert_one(document)
+        
+    with cache_lock:
+        summary_cache[book_name]['book_summary'] = book_summary
+
+    if socketio:
+        progress = int(((chapter_count + 1) / (total_chapters + 1)) * 100)
+        socketio.emit('progress_update', {'progress': progress})
+
+    print("Emitting processing_complete event", {'book_name': book_name})
+    time.sleep(1)
+    socketio.emit('processing_complete', {'book_name': book_name})
+
+def all_summaries(chapter_ids, book_name, socketio):
+    collection = connect_to_mongodb()
+    summaries = {}
+    total_chapters = len(chapter_ids)
+    processed_chapters = 0
+
+    for chapter_id in chapter_ids:
+        # Check in-memory cache first
+        with cache_lock:
+            if book_name in summary_cache and chapter_id in summary_cache[book_name]:
+                summaries[chapter_id] = summary_cache[book_name][chapter_id]
+            else:
+                # If not in cache, check database
+                summary_document = collection.find_one({"chapter_identifier": chapter_id})
+                if summary_document and 'chapter_summary' in summary_document:
+                    summary = summary_document['chapter_summary']
+                    summaries[chapter_id] = summary
+                    # Update cache
+                    with cache_lock:
+                        if book_name not in summary_cache:
+                            summary_cache[book_name] = {}
+                        summary_cache[book_name][chapter_id] = summary
+                else:
+                    summaries[chapter_id] = None
+
+        processed_chapters += 1
+        if socketio:
+            progress = int((processed_chapters / total_chapters) * 100)
+            socketio.emit('summary_progress', {'progress': progress, 'book_name': book_name})
+
+    if socketio:
+        socketio.emit('summaries_complete', {'book_name': book_name})
+
+    return summaries
+
 def lookup_summary(chapter_id):
     # Query the database for the summary
     collection = connect_to_mongodb()
@@ -62,29 +173,40 @@ def lookup_summary(chapter_id):
 
 
 def lookup_book_summary(book_title):
-    # Query the database for the summary
+    # Check in-memory cache first
+    with cache_lock:
+        if book_title in summary_cache and 'book_summary' in summary_cache[book_title]:
+            return summary_cache[book_title]['book_summary']
+
+    # If not in cache, query the database
     collection = connect_to_mongodb()
     summary_document = collection.find_one({"book": book_title, "is_book_summary": True})
+    
     if summary_document:
-        # Return the summary if found
-        return summary_document['book_summary']
+        book_summary = summary_document['book_summary']
+        # Update cache
+        with cache_lock:
+            if book_title not in summary_cache:
+                summary_cache[book_title] = {}
+            summary_cache[book_title]['book_summary'] = book_summary
+        return book_summary
     else:
         # Handle case where no summary is found
         return None
     
 
-def all_summaries(chapter_ids):
-    collection = connect_to_mongodb()
-    summaries = {}
+# def all_summaries(chapter_ids):
+#     collection = connect_to_mongodb()
+#     summaries = {}
 
-    for chapter_id in chapter_ids:
-        summary_document = collection.find_one({"chapter_identifier": chapter_id})
-        if summary_document and 'chapter_summary' in summary_document:
-            summaries[chapter_id] = summary_document['chapter_summary']
-        else:
-            summaries[chapter_id] = None
+#     for chapter_id in chapter_ids:
+#         summary_document = collection.find_one({"chapter_identifier": chapter_id})
+#         if summary_document and 'chapter_summary' in summary_document:
+#             summaries[chapter_id] = summary_document['chapter_summary']
+#         else:
+#             summaries[chapter_id] = None
 
-    return summaries
+#     return summaries
 
 def extract_text_to_json(epub_path, json_path, chunk_size):
     book = epub.read_epub(epub_path)
@@ -130,70 +252,70 @@ def check_summaries(file_path, collection, rewrite=False, socketio=None):
         return False
 
 
-def process_epub(file_path, book_name, collection, socketio, rewrite=False):
-    logging.info("wth Inside process_epub, the file_path is %s", file_path)
-    book = epub.read_epub(file_path)
-    chapter_count = 0  # Initialize a counter for chapters
-    # book_title = book.get_metadata('DC', 'title')[0][0]
-    # logging.info("book_title is %s", book_title)
-    chapter_summaries = []
-    chapter_identifiers = []
+# def process_epub(file_path, book_name, collection, socketio, rewrite=False):
+#     logging.info("wth Inside process_epub, the file_path is %s", file_path)
+#     book = epub.read_epub(file_path)
+#     chapter_count = 0  # Initialize a counter for chapters
+#     # book_title = book.get_metadata('DC', 'title')[0][0]
+#     # logging.info("book_title is %s", book_title)
+#     chapter_summaries = []
+#     chapter_identifiers = []
 
-    total_chapters = len(list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT)))
+#     total_chapters = len(list(book.get_items_of_type(ebooklib.ITEM_DOCUMENT)))
 
-    for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
-        chapter_count += 1  # Increment the chapter count
-        chapter_content = item.get_body_content().decode()
+#     for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+#         chapter_count += 1  # Increment the chapter count
+#         chapter_content = item.get_body_content().decode()
 
-        # Create a unique identifier for each chapter, for example, using book title and chapter number
-        chapter_uri = item.file_name
-        chapter_identifier = f"{book_name}_Chapter_{chapter_uri}"
-        chapter_identifiers.append(chapter_identifier)
+#         # Create a unique identifier for each chapter, for example, using book title and chapter number
+#         chapter_uri = item.file_name
+#         chapter_identifier = f"{book_name}_Chapter_{chapter_uri}"
+#         chapter_identifiers.append(chapter_identifier)
 
-        # Check if the summary for this chapter already exists in the database
-        existing_summary = collection.find_one({"chapter_identifier": chapter_identifier})
-        if existing_summary is None or rewrite is True or existing_summary.get('chapter_summary') is None:
-            # Summary not found in database, generate it
-            chapter_summary = summarize_book_chapter(chapter_content)
-            chapter_summaries.append({'chapter_summary': chapter_summary})
+#         # Check if the summary for this chapter already exists in the database
+#         existing_summary = collection.find_one({"chapter_identifier": chapter_identifier})
+#         if existing_summary is None or rewrite is True or existing_summary.get('chapter_summary') is None:
+#             # Summary not found in database, generate it
+#             chapter_summary = summarize_book_chapter(chapter_content)
+#             chapter_summaries.append({'chapter_summary': chapter_summary})
 
-            # Store the chapter summary, count, and identifier in the database
-            document = {
-                'book': book_name,
-                'chapter_count': chapter_count,
-                'chapter_summary': chapter_summary,
-                'chapter_identifier': chapter_identifier
-            }
-            collection.insert_one(document)
-        else:
-            # Summary already exists, skip processing
-            chapter_summaries.append(existing_summary)
+#             # Store the chapter summary, count, and identifier in the database
+#             document = {
+#                 'book': book_name,
+#                 'chapter_count': chapter_count,
+#                 'chapter_summary': chapter_summary,
+#                 'chapter_identifier': chapter_identifier
+#             }
+#             collection.insert_one(document)
+#         else:
+#             # Summary already exists, skip processing
+#             chapter_summaries.append(existing_summary)
 
-        # Emit progress update
-        if socketio:
-            progress = int((chapter_count / (total_chapters + 1)) * 100)
-            socketio.emit('progress_update', {'progress': progress})
+#         # Emit progress update
+#         if socketio:
+#             progress = int((chapter_count / (total_chapters + 1)) * 100)
+#             socketio.emit('progress_update', {'progress': progress})
 
-    # Now summarizing all the chapters to get a unified summary of the book as a whole
-    existing_book_summary = lookup_book_summary(book_name)
-    if existing_book_summary:
-        logging.info("Book summary already exists, skipping processing for book")
-    else:
-        consolidated_summary = summarize_summaries(" ".join(chapter['chapter_summary']['summary'] for chapter in chapter_summaries if 'chapter_summary' in chapter and chapter['chapter_summary']['is_main_content']))
-        document = {
-            'book': book_name,
-            'is_book_summary': True,  # Flag to indicate that this is a book summary
-            'book_summary': consolidated_summary
-        }
-        logging.info("wtf is going on")
-        collection.insert_one(document)
-    if socketio:
-        progress = int(((chapter_count + 1) / (total_chapters + 1)) * 100)
-        socketio.emit('progress_update', {'progress': progress})
+#     # Now summarizing all the chapters to get a unified summary of the book as a whole
+#     existing_book_summary = lookup_book_summary(book_name)
+#     if existing_book_summary:
+#         logging.info("Book summary already exists, skipping processing for book")
+#     else:
+#         consolidated_summary = summarize_summaries(" ".join(chapter['chapter_summary']['summary'] for chapter in chapter_summaries if 'chapter_summary' in chapter and chapter['chapter_summary']['is_main_content']))
+#         document = {
+#             'book': book_name,
+#             'is_book_summary': True,  # Flag to indicate that this is a book summary
+#             'book_summary': consolidated_summary
+#         }
+#         logging.info("wtf is going on")
+#         collection.insert_one(document)
+#     if socketio:
+#         progress = int(((chapter_count + 1) / (total_chapters + 1)) * 100)
+#         socketio.emit('progress_update', {'progress': progress})
 
-    print("Emitting processing_complete event", {'book_name': book_name})
+#     print("Emitting processing_complete event", {'book_name': book_name})
     
-    socketio.emit('processing_complete', {'book_name': book_name})
+#     socketio.emit('processing_complete', {'book_name': book_name})
    
 # def process_epub(file_path, collection, socketio, rewrite=False):
 #     print("going to process epub")

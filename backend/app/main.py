@@ -231,7 +231,7 @@ def get_all_summaries():
             "message": "Missing book name or chapter IDs"
         }), 400
 
-    summaries = all_summaries(chapter_ids)
+    summaries = all_summaries(chapter_ids, book_name, socketio)
 
     response_data = {
         "status": "success",
