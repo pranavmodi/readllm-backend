@@ -119,8 +119,8 @@ def process_epub(file_path, book_name, collection, socketio, rewrite=False):
         progress = int(((chapter_count + 1) / (total_chapters + 1)) * 100)
         socketio.emit('progress_update', {'progress': progress})
 
-    print("Emitting processing_complete event", {'book_name': book_name})
-    time.sleep(1)
+    print("Emitting processing_complete event, now going to sleep for 5", {'book_name': book_name})
+    time.sleep(5)
     socketio.emit('processing_complete', {'book_name': book_name})
 
 def all_summaries(chapter_ids, book_name, socketio):
