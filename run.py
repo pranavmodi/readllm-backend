@@ -1,5 +1,5 @@
 # run.py
-from backend.app.main import app
+from backend.app.main import app, socketio
 
 if __name__ == "__main__":
-    app.run(debug=True, port=8000)
+    socketio.run(app, debug=True, port=8000)
