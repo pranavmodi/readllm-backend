@@ -4,6 +4,7 @@ from werkzeug.utils import secure_filename
 # from process_book import book_main, lookup_summary, lookup_book_summary
 # from readai import chat_response, create_book_index
 from backend.app.process_book import book_main, lookup_book_summary, lookup_summary, all_summaries
+from backend.app.book_pipeline import init_book_vectorize
 # from .process_book import book_main
 from PIL import Image
 from io import BytesIO
@@ -31,8 +32,8 @@ if not os.path.exists(BOOKS_DIR):
 if not os.path.exists(THUMBNAILS_DIR):
     os.makedirs(THUMBNAILS_DIR)
 
-if not os.path.exists(JSON_DIR):
-    os.makedirs(JSON_DIR)
+if not os.path.exists(EMB_DIR):
+    os.makedirs(EMB_DIR)
 
 # class BookChat:
 #     def __init__(self):
@@ -185,6 +186,11 @@ def process_epub():
     logging.info("Starting a new thread for processing the ePub file and json path is %s", json_path)
     thread = threading.Thread(target=book_main, args=(file_path, book_name, socketio, json_path, embeddings_path))
     thread.start()
+
+    logging.info("Starting a new thread for embedding the ePub file and embedding path is %s", EMB_DIR)
+    thread = threading.Thread(target=init_book_vectorize, args=(file_path, book_name, EMB_DIR))
+    thread.start()
+    # init_book_vectorize(file_path, book_name, output_dir)
 
     return jsonify({"message": "Book processing initiated", "filename": filename})
 

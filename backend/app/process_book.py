@@ -9,8 +9,8 @@ from pymongo.errors import ConnectionFailure, OperationFailure
 from backend.app.readai import summarize_book_chapter, summarize_summaries, call_standalone_embedding_script
 from bs4 import BeautifulSoup
 import numpy as np
-import faiss
-from transformers import AutoTokenizer, AutoModel
+# import faiss
+# from transformers import AutoTokenizer, AutoModel
 import psutil
 import os
 from dotenv import load_dotenv
