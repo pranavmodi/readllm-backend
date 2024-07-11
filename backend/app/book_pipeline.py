@@ -8,6 +8,7 @@ import numpy as np
 import faiss
 import pickle
 from dotenv import load_dotenv
+import openai
 from openai import OpenAI
 
 
@@ -27,6 +28,53 @@ def create_client():
     return global_client
 
 create_client()
+
+
+def chat_response(user_query, book_index, text_chunks, top_k=5):
+
+    # Set up the embedding encoder
+    config = OpenAIEmbeddingConfig(api_key=api_key)
+    encoder = OpenAIEmbeddingEncoder(config=config)
+
+    # Vectorize the user query
+    query_element = Text(text=user_query)
+    query_embedding = encoder.embed_documents([query_element])[0].embeddings
+
+    # Perform the similarity search
+    D, I = book_index.search(np.array([query_embedding]), top_k)
+
+    # Retrieve the most relevant text chunks
+    relevant_chunks = [text_chunks[i] for i in I[0]]
+    print('the relevant chunks are ', relevant_chunks)
+
+    # Prepare the context for the ChatGPT query
+    context = "\n".join(relevant_chunks)
+
+    # Prepare the messages for the ChatGPT API
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant that answers questions based on the given context from a book. If the answer cannot be found in the context, say so."},
+        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {user_query}"}
+    ]
+
+    # Make the API call to ChatGPT
+    try:
+        response = global_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=150,
+            n=1,
+            stop=None,
+            temperature=0.7,
+        )
+
+        # Extract and return the assistant's reply
+        assistant_reply = response.choices[0].message.content.strip()        
+        return assistant_reply
+
+    except Exception as e:
+        print(f"Error in OpenAI API call: {e}")
+        return "I'm sorry, but I encountered an error while processing your request."
+
 
 def clean_text(text):
     text = clean_extra_whitespace(text)

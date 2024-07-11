@@ -73,19 +73,19 @@ def load_embeddings(embedding_path):
 
 # os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-# def search_faiss_index(index, query_embedding, top_k=5):
-#     distances, indices = index.search(query_embedding, top_k)
-#     return indices
+def search_faiss_index(index, query_embedding, top_k=5):
+    distances, indices = index.search(query_embedding, top_k)
+    return indices
 
-# def embed_query(query, model_name="sentence-transformers/all-MiniLM-L6-v2"):
-#     tokenizer = AutoTokenizer.from_pretrained(model_name)
-#     model = AutoModel.from_pretrained(model_name)
+def embed_query(query, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModel.from_pretrained(model_name)
     
-#     inputs = tokenizer(query, return_tensors='pt', truncation=True, padding=True)
-#     outputs = model(**inputs)
-#     query_embedding = outputs.last_hidden_state.mean(dim=1).detach().numpy()
+    inputs = tokenizer(query, return_tensors='pt', truncation=True, padding=True)
+    outputs = model(**inputs)
+    query_embedding = outputs.last_hidden_state.mean(dim=1).detach().numpy()
     
-#     return query_embedding
+    return query_embedding
 
 def generate_openai_response(context, user_query):
     # prompt = f"""
@@ -134,6 +134,63 @@ def generate_openai_response(context, user_query):
 #     logging.info("going to return response")
 
 #     return response
+
+
+def chat_response(user_query, index, text_chunks, api_key, top_k=5):
+    # Set up OpenAI API
+    openai.api_key = api_key
+
+    # Set up the embedding encoder
+    config = OpenAIEmbeddingConfig(api_key=api_key)
+    encoder = OpenAIEmbeddingEncoder(config=config)
+
+    # Vectorize the user query
+    query_element = Text(text=user_query)
+    query_embedding = encoder.embed_documents([query_element])[0].embeddings
+
+    # Perform the similarity search
+    D, I = index.search(np.array([query_embedding]), top_k)
+
+    # Retrieve the most relevant text chunks
+    relevant_chunks = [text_chunks[i] for i in I[0]]
+
+    # Prepare the context for the ChatGPT query
+    context = "\n".join(relevant_chunks)
+
+    # Prepare the messages for the ChatGPT API
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant that answers questions based on the given context from a book. If the answer cannot be found in the context, say so."},
+        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {user_query}"}
+    ]
+
+    # Make the API call to ChatGPT
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=150,
+            n=1,
+            stop=None,
+            temperature=0.7,
+        )
+
+        # Extract and return the assistant's reply
+        assistant_reply = response.choices[0].message['content'].strip()
+        return assistant_reply
+
+    except Exception as e:
+        print(f"Error in OpenAI API call: {e}")
+        return "I'm sorry, but I encountered an error while processing your request."
+
+# Usage example:
+# api_key = "your-openai-api-key"
+# index = faiss.read_index("path_to_your_faiss_index.index")
+# with open("path_to_your_text_chunks.pkl", "rb") as f:
+#     text_chunks = pickle.load(f)
+# 
+# user_query = "What is the main theme of the book?"
+# response = chat_response(user_query, index, text_chunks, api_key)
+# print(response)
 
 # # Example usage
 # if __name__ == '__main__':

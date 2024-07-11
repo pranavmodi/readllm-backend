@@ -4,7 +4,7 @@ from werkzeug.utils import secure_filename
 # from process_book import book_main, lookup_summary, lookup_book_summary
 # from readai import chat_response, create_book_index
 from backend.app.process_book import book_main, lookup_book_summary, lookup_summary, all_summaries
-from backend.app.book_pipeline import init_book_vectorize
+from backend.app.book_pipeline import init_book_vectorize, chat_response
 # from .process_book import book_main
 from PIL import Image
 from io import BytesIO
@@ -14,6 +14,8 @@ import os
 import threading
 import logging
 from flask_socketio import SocketIO, emit
+import faiss
+import pickle
 # import json
 
 # app = Flask(__name__, static_folder='static')
@@ -260,26 +262,45 @@ def get_all_summaries():
 
     return jsonify(response_data)
 
-# @app.route('/chat_with_book', methods=['POST'])
-# def chat_with_book():
-#     data = request.json
-#     query = data.get('query')
-#     embedding_name = data.get('npy_path')
-#     embedding_path = os.path.join(EMB_DIR, embedding_name)
-#     logging.info("the embedding file path is %s", embedding_path)
-#     json_path = os.path.join(JSON_DIR, data.get('json_name'))
-#     logging.info("the json file path is %s", json_path)
 
-#     with open(json_path, 'r', encoding='utf-8') as f:
-#         text_chunks = json.load(f)
+@app.route('/chat_with_book', methods=['POST'])
+def chat_with_book():
+    data = request.json
+    query = data.get('query')
+    book_name = data.get('book_name')
+    
+    if not query or not book_name:
+        return jsonify({"error": "Query and book name must be provided"}), 400
 
-#     if not query:
-#         return jsonify({"error": "No query provided"}), 400
+    # Construct file paths
+    index_path = os.path.join(EMB_DIR, f"{book_name}_faiss.index")
+    chunks_path = os.path.join(EMB_DIR, f"{book_name}_chunks.pkl")
 
-#     index = book_chat.get_index(embedding_path)
-#     response = chat_response(query, index, text_chunks, top_k=10)
+    # Check if required files exist
+    if not os.path.exists(index_path) or not os.path.exists(chunks_path):
+        return jsonify({"error": "Book embeddings or chunks not found"}), 404
 
-#     return jsonify({"response": response}), 200
+    try:
+        # Load FAISS index
+        book_index = faiss.read_index(index_path)
+
+        # Load text chunks
+        with open(chunks_path, 'rb') as f:
+            text_chunks = pickle.load(f)
+
+        # # Get OpenAI API key from environment variable
+        # api_key = os.getenv('OPENAI_API_KEY')
+        # if not api_key:
+        #     return jsonify({"error": "OpenAI API key not found"}), 500
+
+        # Call chat_response function
+        response = chat_response(query, book_index, text_chunks, top_k=5)
+
+        return jsonify({"response": response})
+
+    except Exception as e:
+        logging.error(f"Error in chat_with_book: {str(e)}")
+        return jsonify({"error": "An error occurred while processing your request"}), 500
 
 if __name__ == '__main__':
     # app.run(debug=True)
