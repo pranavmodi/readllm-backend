@@ -4,6 +4,7 @@ from unstructured.partition.epub import partition_epub
 from unstructured.documents.elements import Text, Title, NarrativeText
 from unstructured.cleaners.core import clean_extra_whitespace, replace_unicode_quotes
 from unstructured.embed.openai import OpenAIEmbeddingConfig, OpenAIEmbeddingEncoder
+from backend.app.process_book import lookup_book_summary, lookup_summary
 import numpy as np
 import faiss
 import pickle
@@ -29,6 +30,70 @@ def create_client():
 
 create_client()
 
+def explain_the_page(book_name: str, chapter_name: str, page_text: str):
+    # Initialize OpenAI API (make sure to set your API key in the environment variables)
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+
+    # Fetch book summary
+    book_summary = lookup_book_summary(book_name)
+    if not book_summary:
+        return {"error": "Book summary not found"}
+
+    print("motherfucking here")
+    # Fetch chapter summary
+    chapter_id = f"{book_name}_Chapter_{chapter_name}"
+    chapter_summary = lookup_summary(chapter_id)
+    # print('the chapter summary', chapter_summary)
+    if not chapter_summary:
+        return {"error": "Chapter summary not found"}
+
+    # Prepare the prompt for OpenAI
+    prompt = f"""
+    Book: {book_name}
+    Book Summary: {book_summary}
+    
+    Chapter: {chapter_name}
+    Chapter Summary: {chapter_summary['summary']}
+    
+    Current Page Text:
+    {page_text}
+    
+    Please provide a simplified explanation of the page text, considering the context of the book and chapter summaries. 
+    Specifically explain what is written on this page, by quoting sentences, and not the summaries:
+    Explain like to a bright teenager, without any complex jargon
+    """
+
+    try:
+        # Call OpenAI API for explanation
+        print('just before the request')
+        response = global_client.chat.completions.create(
+            # model="gpt-3.5-turbo",
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that explains complex text in simpler terms."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=600,
+            n=1,
+            stop=None,
+            temperature=0.7,
+        )
+
+        # Extract the explanation from the API response
+        # print('the response', response.choices[0])
+        # explanation = response.choices[0].message['content'].strip()
+        explanation = response.choices[0].message.content
+
+        print('going to return the explanation', explanation)
+        return {
+            "book_name": book_name,
+            "chapter_name": chapter_name,
+            "explanation": explanation
+        }
+
+    except Exception as e:
+        print(e)
+        return {"error": f"Failed to generate explanation: {str(e)}"}
 
 def chat_response(user_query, book_index, text_chunks, top_k=5):
 

@@ -10,7 +10,6 @@ from transformers import AutoTokenizer, AutoModel
 import subprocess
 
 
-
 global_client = None
 
 def create_client():
@@ -22,28 +21,29 @@ def create_client():
         global_client = OpenAI(api_key=openai_api_key)
     return global_client
 
+
 # Initialize OpenAI API key
 
-def call_standalone_embedding_script(text_chunks, model_name, batch_size=1):
-    try:
-        text_chunks_json = json.dumps(text_chunks)
-        result = subprocess.run(
-            ['python', 'standalone_embedding.py', text_chunks_json, model_name, str(batch_size)],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True
-        )
-        logging.info(result.stdout)
-        if result.stderr:
-            logging.error(result.stderr)
+# def call_standalone_embedding_script(text_chunks, model_name, batch_size=1):
+#     try:
+#         text_chunks_json = json.dumps(text_chunks)
+#         result = subprocess.run(
+#             ['python', 'standalone_embedding.py', text_chunks_json, model_name, str(batch_size)],
+#             check=True,
+#             stdout=subprocess.PIPE,
+#             stderr=subprocess.PIPE,
+#             text=True
+#         )
+#         logging.info(result.stdout)
+#         if result.stderr:
+#             logging.error(result.stderr)
         
-        embeddings = np.load('embeddings.npy')
-        return embeddings
-    except subprocess.CalledProcessError as e:
-        logging.error(f"An error occurred while calling the standalone script: {e}")
-        logging.error(e.stderr)
-        return None
+#         embeddings = np.load('embeddings.npy')
+#         return embeddings
+#     except subprocess.CalledProcessError as e:
+#         logging.error(f"An error occurred while calling the standalone script: {e}")
+#         logging.error(e.stderr)
+#         return None
 
 def load_embeddings(embedding_path):
     try:
@@ -136,51 +136,51 @@ def generate_openai_response(context, user_query):
 #     return response
 
 
-def chat_response(user_query, index, text_chunks, api_key, top_k=5):
-    # Set up OpenAI API
-    openai.api_key = api_key
+# def chat_response(user_query, index, text_chunks, api_key, top_k=5):
+#     # Set up OpenAI API
+#     openai.api_key = api_key
 
-    # Set up the embedding encoder
-    config = OpenAIEmbeddingConfig(api_key=api_key)
-    encoder = OpenAIEmbeddingEncoder(config=config)
+#     # Set up the embedding encoder
+#     config = OpenAIEmbeddingConfig(api_key=api_key)
+#     encoder = OpenAIEmbeddingEncoder(config=config)
 
-    # Vectorize the user query
-    query_element = Text(text=user_query)
-    query_embedding = encoder.embed_documents([query_element])[0].embeddings
+#     # Vectorize the user query
+#     query_element = Text(text=user_query)
+#     query_embedding = encoder.embed_documents([query_element])[0].embeddings
 
-    # Perform the similarity search
-    D, I = index.search(np.array([query_embedding]), top_k)
+#     # Perform the similarity search
+#     D, I = index.search(np.array([query_embedding]), top_k)
 
-    # Retrieve the most relevant text chunks
-    relevant_chunks = [text_chunks[i] for i in I[0]]
+#     # Retrieve the most relevant text chunks
+#     relevant_chunks = [text_chunks[i] for i in I[0]]
 
-    # Prepare the context for the ChatGPT query
-    context = "\n".join(relevant_chunks)
+#     # Prepare the context for the ChatGPT query
+#     context = "\n".join(relevant_chunks)
 
-    # Prepare the messages for the ChatGPT API
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant that answers questions based on the given context from a book. If the answer cannot be found in the context, say so."},
-        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {user_query}"}
-    ]
+#     # Prepare the messages for the ChatGPT API
+#     messages = [
+#         {"role": "system", "content": "You are a helpful assistant that answers questions based on the given context from a book. If the answer cannot be found in the context, say so."},
+#         {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {user_query}"}
+#     ]
 
-    # Make the API call to ChatGPT
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            max_tokens=150,
-            n=1,
-            stop=None,
-            temperature=0.7,
-        )
+#     # Make the API call to ChatGPT
+#     try:
+#         response = openai.ChatCompletion.create(
+#             model="gpt-3.5-turbo",
+#             messages=messages,
+#             max_tokens=150,
+#             n=1,
+#             stop=None,
+#             temperature=0.7,
+#         )
 
-        # Extract and return the assistant's reply
-        assistant_reply = response.choices[0].message['content'].strip()
-        return assistant_reply
+#         # Extract and return the assistant's reply
+#         assistant_reply = response.choices[0].message['content'].strip()
+#         return assistant_reply
 
-    except Exception as e:
-        print(f"Error in OpenAI API call: {e}")
-        return "I'm sorry, but I encountered an error while processing your request."
+#     except Exception as e:
+#         print(f"Error in OpenAI API call: {e}")
+#         return "I'm sorry, but I encountered an error while processing your request."
 
 # Usage example:
 # api_key = "your-openai-api-key"
@@ -209,6 +209,13 @@ def chat_response(user_query, index, text_chunks, api_key, top_k=5):
     
 #     response = chat_response(user_query, embedding_path, text_chunks, top_k=5)
 #     print(response)
+
+
+
+
+# Example usage:
+# result = explain_the_page("Book Title", "Chapter 1", "Page text goes here...")
+# print(result)
 
 
 def num_tokens_from_string(string: str, encoding_name: str) -> int:

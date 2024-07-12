@@ -1,11 +1,8 @@
 from flask import Flask, jsonify, request, url_for, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-# from process_book import book_main, lookup_summary, lookup_book_summary
-# from readai import chat_response, create_book_index
 from backend.app.process_book import book_main, lookup_book_summary, lookup_summary, all_summaries
-from backend.app.book_pipeline import init_book_vectorize, chat_response
-# from .process_book import book_main
+from backend.app.book_pipeline import init_book_vectorize, chat_response, explain_the_page
 from PIL import Image
 from io import BytesIO
 import zipfile
@@ -16,9 +13,8 @@ import logging
 from flask_socketio import SocketIO, emit
 import faiss
 import pickle
-# import json
 
-# app = Flask(__name__, static_folder='static')
+
 app = Flask(__name__, static_folder=os.path.join(os.getcwd(), 'static'))
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -301,6 +297,44 @@ def chat_with_book():
     except Exception as e:
         logging.error(f"Error in chat_with_book: {str(e)}")
         return jsonify({"error": "An error occurred while processing your request"}), 500
+
+
+@app.route('/explain-page', methods=['POST'])
+def explain_page():
+    data = request.json
+    book_name = data.get('book_name')
+    chapter_name = data.get('chapter_name')
+    page_text = data.get('page_text')
+
+    print("in explain page")
+    print("the chapter name", chapter_name)
+
+    if not book_name or not chapter_name or not page_text:
+        return jsonify({
+            "status": "error",
+            "message": "Missing book name, chapter name, or page text"
+        }), 400
+
+    try:
+        explanation = explain_the_page(book_name, chapter_name, page_text)
+        
+        if isinstance(explanation, dict) and 'error' in explanation:
+            return jsonify({
+                "status": "error",
+                "message": explanation['error']
+            }), 500
+
+        return jsonify({
+            "status": "success",
+            "explanation": explanation
+        })
+
+    except Exception as e:
+        logging.exception(f"Error in explain_page: {str(e)}")
+        return jsonify({
+            "status": "error",
+            "message": f"An error occurred while processing your request: {str(e)}"
+        }), 500
 
 if __name__ == '__main__':
     # app.run(debug=True)
