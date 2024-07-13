@@ -48,7 +48,7 @@ def create_client():
 def load_embeddings(embedding_path):
     try:
         embeddings = np.load(embedding_path)
-        logging.info(f"Loaded embeddings from {embedding_path} with shape {embeddings.shape}.")
+        logging.info(f"Loaded the embeddings from {embedding_path} with shape {embeddings.shape}.")
         return embeddings
     except Exception as e:
         logging.error(f"Failed to load embeddings from {embedding_path}: {e}")
