@@ -17,3 +17,4 @@ tiktoken==0.5.2
 cryptography==41.0.7
 numpy==1.26.4
 unstructured[openai]==0.14.9
+pypandoc==1.13
