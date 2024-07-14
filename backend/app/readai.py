@@ -45,14 +45,14 @@ def create_client():
 #         logging.error(e.stderr)
 #         return None
 
-def load_embeddings(embedding_path):
-    try:
-        embeddings = np.load(embedding_path)
-        logging.info(f"Loaded the embeddings from {embedding_path} with shape {embeddings.shape}.")
-        return embeddings
-    except Exception as e:
-        logging.error(f"Failed to load embeddings from {embedding_path}: {e}")
-        return None
+# def load_embeddings(embedding_path):
+#     try:
+#         embeddings = np.load(embedding_path)
+#         logging.info(f"Loaded the embeddings from {embedding_path} with shape {embeddings.shape}.")
+#         return embeddings
+#     except Exception as e:
+#         logging.error(f"Failed to load embeddings from {embedding_path}: {e}")
+#         return None
     
 
 # def create_faiss_index(embeddings):
@@ -73,43 +73,43 @@ def load_embeddings(embedding_path):
 
 # os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
-def search_faiss_index(index, query_embedding, top_k=5):
-    distances, indices = index.search(query_embedding, top_k)
-    return indices
+# def search_faiss_index(index, query_embedding, top_k=5):
+#     distances, indices = index.search(query_embedding, top_k)
+#     return indices
 
-def embed_query(query, model_name="sentence-transformers/all-MiniLM-L6-v2"):
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModel.from_pretrained(model_name)
+# def embed_query(query, model_name="sentence-transformers/all-MiniLM-L6-v2"):
+#     tokenizer = AutoTokenizer.from_pretrained(model_name)
+#     model = AutoModel.from_pretrained(model_name)
     
-    inputs = tokenizer(query, return_tensors='pt', truncation=True, padding=True)
-    outputs = model(**inputs)
-    query_embedding = outputs.last_hidden_state.mean(dim=1).detach().numpy()
+#     inputs = tokenizer(query, return_tensors='pt', truncation=True, padding=True)
+#     outputs = model(**inputs)
+#     query_embedding = outputs.last_hidden_state.mean(dim=1).detach().numpy()
     
-    return query_embedding
+#     return query_embedding
 
-def generate_openai_response(context, user_query):
-    # prompt = f"""
-    # Based on the following context, answer the user's question:
-    # Context: {context}
-    # Question: {user_query}
-    # """
+# def generate_openai_response(context, user_query):
+#     # prompt = f"""
+#     # Based on the following context, answer the user's question:
+#     # Context: {context}
+#     # Question: {user_query}
+#     # """
     
-    # response = openai.Completion.create(
-    #     engine="davinci-codex", # Replace with the appropriate OpenAI model
-    #     prompt=prompt,
-    #     max_tokens=150
-    # )
+#     # response = openai.Completion.create(
+#     #     engine="davinci-codex", # Replace with the appropriate OpenAI model
+#     #     prompt=prompt,
+#     #     max_tokens=150
+#     # )
 
-    client = create_client()
-    completion = client.chat.completions.create(
-      model="gpt-3.5-turbo",
-      messages=[
-        {"role": "system", "content": context},
-        {"role": "user", "content": user_query}
-      ]
-    )
+#     client = create_client()
+#     completion = client.chat.completions.create(
+#       model="gpt-3.5-turbo",
+#       messages=[
+#         {"role": "system", "content": context},
+#         {"role": "user", "content": user_query}
+#       ]
+#     )
 
-    return completion.choices[0].message.content
+#     return completion.choices[0].message.content
     # return response.choices[0].text.strip()
 
 # def chat_response(user_query, index, text_chunks, top_k=10):

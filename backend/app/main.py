@@ -2,17 +2,17 @@ from flask import Flask, jsonify, request, url_for, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from backend.app.process_book import book_main, lookup_book_summary, lookup_summary, all_summaries
-from backend.app.book_pipeline import init_book_vectorize, chat_response, explain_the_page
+from backend.app.book_pipeline import explain_the_page
+from backend.app.book_pipeline_copy import init_book_vectorize, chat_response
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import OpenAIEmbeddings
 from PIL import Image
-from io import BytesIO
 import zipfile
 from lxml import etree
 import os
 import threading
 import logging
 from flask_socketio import SocketIO, emit
-import faiss
-import pickle
 
 
 app = Flask(__name__, static_folder=os.path.join(os.getcwd(), 'static'))
@@ -185,9 +185,9 @@ def process_epub():
     thread = threading.Thread(target=book_main, args=(file_path, book_name, socketio, json_path, embeddings_path))
     thread.start()
 
-    logging.info("Starting a new thread for embedding the ePub file and embedding path is %s", EMB_DIR)
-    thread = threading.Thread(target=init_book_vectorize, args=(file_path, book_name, EMB_DIR))
-    thread.start()
+    # logging.info("Starting a new thread for embedding the ePub file and embedding path is %s", EMB_DIR)
+    # thread = threading.Thread(target=init_book_vectorize, args=(file_path, book_name, EMB_DIR))
+    # thread.start()
     # init_book_vectorize(file_path, book_name, output_dir)
 
     return jsonify({"message": "Book processing initiated", "filename": filename})
@@ -259,8 +259,46 @@ def get_all_summaries():
     return jsonify(response_data)
 
 
+@app.route('/initialize_book', methods=['POST'])
+def initialize_book():
+    print('goign to initialize book')
+    data = request.json
+    if not data or 'book_name' not in data:
+        return jsonify({"error": "Book name is required"}), 400
+
+    book_name = data['book_name']
+    filename = data['filename']
+    force_recreate = data.get('force_recreate', False)
+
+    # Construct the file path
+    # file_path = os.path.join(BOOKS_DIR, f"{filename}.epub")
+    file_path = os.path.join(BOOKS_DIR, filename)
+
+    print('the file path', file_path)
+
+    if not os.path.exists(file_path):
+        print('book not found')
+        return jsonify({"error": "Book file not found"}), 404
+
+    # Start the vectorization process in a separate thread
+    thread = threading.Thread(target=run_vectorization, args=(file_path, book_name, force_recreate))
+    thread.start()
+
+    return jsonify({"message": f"Vectorization process started for {book_name}"}), 202
+
+def run_vectorization(file_path, book_name, force_recreate):
+    try:
+        init_book_vectorize(file_path, book_name, EMB_DIR, force_recreate=force_recreate)
+        # You could emit a socket event here if you're using SocketIO
+        # socketio.emit('vectorization_complete', {'book_name': book_name, 'status': 'success'})
+    except Exception as e:
+        print(f"Error vectorizing {book_name}: {str(e)}")
+        # socketio.emit('vectorization_error', {'book_name': book_name, 'error': str(e)})
+
+
 @app.route('/chat_with_book', methods=['POST'])
 def chat_with_book():
+    print('Processing chat request')
     data = request.json
     query = data.get('query')
     book_name = data.get('book_name')
@@ -268,34 +306,25 @@ def chat_with_book():
     if not query or not book_name:
         return jsonify({"error": "Query and book name must be provided"}), 400
 
-    # Construct file paths
-    index_path = os.path.join(EMB_DIR, f"{book_name}_faiss.index")
-    chunks_path = os.path.join(EMB_DIR, f"{book_name}_chunks.pkl")
+    # Construct file path
+    index_path = os.path.join(EMB_DIR, f"{book_name}_faiss.pkl")
 
-    # Check if required files exist
-    if not os.path.exists(index_path) or not os.path.exists(chunks_path):
-        return jsonify({"error": "Book embeddings or chunks not found"}), 404
+    # Check if required file exists
+    if not os.path.exists(index_path):
+        return jsonify({"error": "Book embeddings not found"}), 404
 
     try:
-        # Load FAISS index
-        book_index = faiss.read_index(index_path)
-
-        # Load text chunks
-        with open(chunks_path, 'rb') as f:
-            text_chunks = pickle.load(f)
-
-        # # Get OpenAI API key from environment variable
-        # api_key = os.getenv('OPENAI_API_KEY')
-        # if not api_key:
-        #     return jsonify({"error": "OpenAI API key not found"}), 500
+        # Load the FAISS index
+        embeddings = OpenAIEmbeddings()
+        vectorstore = FAISS.load_local(index_path, embeddings, allow_dangerous_deserialization=True)
 
         # Call chat_response function
-        response = chat_response(query, book_index, text_chunks, top_k=5)
+        response = chat_response(query, vectorstore, book_name)
 
         return jsonify({"response": response})
 
     except Exception as e:
-        logging.error(f"Error in chat_with_book: {str(e)}")
+        print(f"Error in chat_with_book: {str(e)}")
         return jsonify({"error": "An error occurred while processing your request"}), 500
 
 
