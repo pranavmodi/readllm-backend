@@ -14,7 +14,6 @@ from langchain.prompts import PromptTemplate
 from backend.app.process_book import lookup_book_summary, lookup_summary
 
 
-
 load_dotenv()
 
 def create_client():
@@ -103,13 +102,15 @@ def chat_response(query, vectorstore, book_name):
             retriever=vectorstore.as_retriever(),
             memory=memory,
             combine_docs_chain_kwargs={"prompt": PROMPT},
-            return_source_documents=True,
+            return_source_documents=False,
             get_chat_history=lambda h: h,  # Return full chat history
-            output_key='answer'
+            output_key='answer',  # Add this line
+            verbose=True
         )
 
         # Get the response
-        result = chain({"question": f"For the book '{book_name}': {query}", "book_name": '{book_name}'})
+        result = chain({"question": f"For the book '{book_name}': {query}", "book_name": book_name})
+        # result = chain({"question": f"For the book '{book_name}': {query}", "book_name": '{book_name}'})
         
         return result['answer']
 
@@ -120,20 +121,7 @@ def chat_response(query, vectorstore, book_name):
         
         # Returning an error message:
         return f"An error occurred while processing your request: {str(e)}"
-        
-        # You can choose to re-raise the exception or return an error message
-        # Re-raising:
-        # raise
-        
-        # Or returning an error message:
-        return f"An error occurred while processing your request: {str(e)}"
-
-    # except Exception as e:
-    #     logger.error("Error in chat_response function:")
-    #     logger.error(traceback.format_exc())
-    #     raise  # Re-raise the exception after logging
-
-
+ 
 
 def explain_the_page(book_name: str, chapter_name: str, page_text: str):
     # Fetch book and chapter summaries (assuming these functions exist)
