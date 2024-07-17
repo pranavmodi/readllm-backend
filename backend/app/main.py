@@ -1,3 +1,4 @@
+from collections import defaultdict
 from flask import Flask, jsonify, request, url_for, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -7,6 +8,7 @@ from backend.app.book_pipeline_copy import init_book_vectorize, chat_response
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import OpenAIEmbeddings
 from PIL import Image
+import json
 import zipfile
 from lxml import etree
 import os
@@ -296,6 +298,25 @@ def run_vectorization(file_path, book_name, force_recreate):
         # socketio.emit('vectorization_error', {'book_name': book_name, 'error': str(e)})
 
 
+def manage_conversation_history(book_name, question, answer, max_history=2):
+    history_file = f"{book_name}_chat_history.json"
+    
+    if os.path.exists(history_file):
+        with open(history_file, 'r') as f:
+            history = json.load(f)
+    else:
+        history = []
+    
+    history.append({"question": question, "answer": answer})
+    
+    # Keep only the last 'max_history' interactions
+    history = history[-max_history:]
+    
+    with open(history_file, 'w') as f:
+        json.dump(history, f)
+    
+    return history
+
 @app.route('/chat_with_book', methods=['POST'])
 def chat_with_book():
     print('Processing chat request')
@@ -319,12 +340,24 @@ def chat_with_book():
         vectorstore = FAISS.load_local(index_path, embeddings, allow_dangerous_deserialization=True)
 
         # Call chat_response function
-        response = chat_response(query, vectorstore, book_name)
+        history_file = f"{book_name}_chat_history.json"
+        if os.path.exists(history_file):
+            with open(history_file, 'r') as f:
+                history = json.load(f)
+        else:
+            history = []
+
+        response = chat_response(query, vectorstore, book_name, history)
+        print('the response is', response)
+        manage_conversation_history(book_name, query, response)
 
         return jsonify({"response": response})
 
     except Exception as e:
         print(f"Error in chat_with_book: {str(e)}")
+        print("Full stacktrace:")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": "An error occurred while processing your request"}), 500
 
 

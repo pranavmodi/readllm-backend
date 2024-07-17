@@ -1,5 +1,6 @@
 import os
 from dotenv import load_dotenv
+import json
 from langchain_community.document_loaders import UnstructuredEPubLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import OpenAIEmbeddings
@@ -8,6 +9,7 @@ from langchain.memory import ConversationBufferMemory
 from langchain_community.chat_models import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain_community.vectorstores import FAISS
+from langchain_community.chat_message_histories.in_memory import ChatMessageHistory
 from langchain.chains import RetrievalQA
 from langchain_community.llms import OpenAI
 from langchain.prompts import PromptTemplate
@@ -63,25 +65,20 @@ def init_book_vectorize(file_path, book_name, output_dir, socketio=None, force_r
 
     print(f"Completed processing {book_name}")
 
-import logging
-import traceback
-import numpy as np
 
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-logging.basicConfig(level=logging.ERROR)
-logger = logging.getLogger(__name__)
-
-def chat_response(query, vectorstore, book_name):
+def chat_response(query, vectorstore, book_name, history):
     try:
-        # Create a memory object with a custom input key
+
+        # Create a memory object with the existing chat history
+        print('history is ', history)
         memory = ConversationBufferMemory(
             memory_key="chat_history",
-            input_key="question",  # Specify the input key
+            input_key="question",
             return_messages=True
         )
+
+        for interaction in history:
+            memory.save_context({"question": interaction["question"]}, {"output": interaction["answer"]})
 
         # Create a prompt template
         prompt_template = """You are an AI assistant helping with questions about the book "{book_name}".
@@ -103,21 +100,16 @@ def chat_response(query, vectorstore, book_name):
             memory=memory,
             combine_docs_chain_kwargs={"prompt": PROMPT},
             return_source_documents=False,
-            get_chat_history=lambda h: h,  # Return full chat history
-            output_key='answer',  # Add this line
-            verbose=True
+            get_chat_history=lambda h: h,
+            output_key='answer',
         )
 
         # Get the response
         result = chain({"question": f"For the book '{book_name}': {query}", "book_name": book_name})
-        # result = chain({"question": f"For the book '{book_name}': {query}", "book_name": '{book_name}'})
         
         return result['answer']
-
+    
     except Exception as e:
-        # Log the full stack trace
-        logger.error(f"Error in chat_response: {str(e)}")
-        logger.error(traceback.format_exc())
         
         # Returning an error message:
         return f"An error occurred while processing your request: {str(e)}"
