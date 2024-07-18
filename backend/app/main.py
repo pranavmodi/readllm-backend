@@ -3,8 +3,8 @@ from flask import Flask, jsonify, request, url_for, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 from backend.app.process_book import book_main, lookup_book_summary, lookup_summary, all_summaries
-from backend.app.book_pipeline import explain_the_page
-from backend.app.book_pipeline_copy import init_book_vectorize, chat_response
+# from backend.app.book_pipeline import explain_the_page
+from backend.app.book_pipeline_copy import init_book_vectorize, chat_response, explain_the_page
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import OpenAIEmbeddings
 from PIL import Image
@@ -367,6 +367,7 @@ def explain_page():
     book_name = data.get('book_name')
     chapter_name = data.get('chapter_name')
     page_text = data.get('page_text')
+    highlighted_text = data.get('highlighted_text')
 
     print("in explain page")
     print("the chapter name", chapter_name)
@@ -378,7 +379,7 @@ def explain_page():
         }), 400
 
     try:
-        explanation = explain_the_page(book_name, chapter_name, page_text)
+        explanation = explain_the_page(book_name, chapter_name, page_text, highlighted_text)
         
         if isinstance(explanation, dict) and 'error' in explanation:
             return jsonify({

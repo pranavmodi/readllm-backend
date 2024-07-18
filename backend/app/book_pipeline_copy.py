@@ -109,7 +109,7 @@ def chat_response(query, vectorstore, book_name, history):
         return f"An error occurred while processing your request: {str(e)}"
  
 
-def explain_the_page(book_name: str, chapter_name: str, page_text: str):
+def explain_the_page(book_name: str, chapter_name: str, page_text: str, highlighted_text: str = ''):
     # Fetch book and chapter summaries (assuming these functions exist)
     book_summary = lookup_book_summary(book_name)
     chapter_id = f"{book_name}_Chapter_{chapter_name}"
@@ -120,37 +120,71 @@ def explain_the_page(book_name: str, chapter_name: str, page_text: str):
     if not chapter_summary:
         return {"error": "Chapter summary not found"}
 
-    # Create a prompt template
-    prompt_template = PromptTemplate(
-        input_variables=["book_name", "book_summary", "chapter_name", "chapter_summary", "page_text"],
-        template="""
-        Book: {book_name}
-        Book Summary: {book_summary}
-        
-        Chapter: {chapter_name}
-        Chapter Summary: {chapter_summary}
-        
-        Current Page Text:
-        {page_text}
-        
-        Please provide a simplified explanation of the page text, considering the context of the book and chapter summaries. 
-        Specifically explain what is written on this page, by quoting sentences, and not the summaries:
-        Explain like to a bright teenager, without any complex jargon
-        """
-    )
+    # Create a prompt template based on whether highlighted text is available
+    print('highlighted text is', highlighted_text)
+
+    if highlighted_text:
+        print('going to use highlighted text')
+        prompt_template = PromptTemplate(
+            input_variables=["book_name", "book_summary", "chapter_name", "chapter_summary", "page_text", "highlighted_text"],
+            template="""
+            Book: {book_name}
+            Book Summary: {book_summary}
+            
+            Chapter: {chapter_name}
+            Chapter Summary: {chapter_summary}
+            
+            Current Page Text:
+            {page_text}
+            
+            Highlighted Text:
+            {highlighted_text}
+            
+            Please provide a simplified explanation of the highlighted text, considering the context of the book, chapter summaries, and the current page text.
+            Focus specifically on explaining the highlighted portion:
+            "{highlighted_text}"
+            Explain it like you would to a bright teenager, without using complex jargon. 
+            Relate the explanation to the broader context of the page and chapter if relevant.
+            """
+        )
+    else:
+        prompt_template = PromptTemplate(
+            input_variables=["book_name", "book_summary", "chapter_name", "chapter_summary", "page_text"],
+            template="""
+            Book: {book_name}
+            Book Summary: {book_summary}
+            
+            Chapter: {chapter_name}
+            Chapter Summary: {chapter_summary}
+            
+            Current Page Text:
+            {page_text}
+            
+            Please provide a simplified explanation of the page text, considering the context of the book and chapter summaries. 
+            Specifically explain what is written on this page, by quoting sentences, and not the summaries:
+            Explain like to a bright teenager, without any complex jargon
+            """
+        )
 
     # Create the chain
     llm = OpenAI(temperature=0.7)
     chain = prompt_template | llm
 
-    # Run the chain
-    result = chain.invoke({
+    # Prepare the input dictionary
+    input_dict = {
         "book_name": book_name,
         "book_summary": book_summary,
         "chapter_name": chapter_name,
         "chapter_summary": chapter_summary['summary'],
         "page_text": page_text,
-    })
+    }
+    
+    # Add highlighted_text to input if available
+    if highlighted_text:
+        input_dict["highlighted_text"] = highlighted_text
+
+    # Run the chain
+    result = chain.invoke(input_dict)
 
     return {
         "book_name": book_name,
