@@ -21,13 +21,6 @@ load_dotenv()
 def create_client():
     return OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-import os
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import UnstructuredEPubLoader
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain.schema import Document
-
 def init_book_vectorize(file_path, book_name, output_dir, socketio=None, force_recreate=False):
     index_path = os.path.join(output_dir, f"{book_name}_faiss.pkl")
     
@@ -95,7 +88,8 @@ def chat_response(query, vectorstore, book_name, history):
 
         # Create the conversational chain
         chain = ConversationalRetrievalChain.from_llm(
-            llm=ChatOpenAI(temperature=0.7, model_name="gpt-3.5-turbo"),
+            # llm=ChatOpenAI(temperature=0.7, model_name="gpt-3.5-turbo"),
+            llm=ChatOpenAI(temperature=0.7, model_name="gpt-4o"),
             retriever=vectorstore.as_retriever(),
             memory=memory,
             combine_docs_chain_kwargs={"prompt": PROMPT},
@@ -155,7 +149,7 @@ def explain_the_page(book_name: str, chapter_name: str, page_text: str):
         "book_summary": book_summary,
         "chapter_name": chapter_name,
         "chapter_summary": chapter_summary['summary'],
-        "page_text": page_text
+        "page_text": page_text,
     })
 
     return {
