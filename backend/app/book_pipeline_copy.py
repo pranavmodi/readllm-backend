@@ -89,7 +89,7 @@ def chat_response(query, vectorstore, book_name, history):
         # Create the conversational chain
         chain = ConversationalRetrievalChain.from_llm(
             # llm=ChatOpenAI(temperature=0.7, model_name="gpt-3.5-turbo"),
-            llm=ChatOpenAI(temperature=0.7, model_name="gpt-4o"),
+            llm=ChatOpenAI(temperature=0.7, model_name="gpt-4o-mini"),
             retriever=vectorstore.as_retriever(),
             memory=memory,
             combine_docs_chain_kwargs={"prompt": PROMPT},

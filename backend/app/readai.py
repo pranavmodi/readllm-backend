@@ -8,6 +8,8 @@ import numpy as np
 import logging
 from transformers import AutoTokenizer, AutoModel
 import subprocess
+import re
+
 
 
 global_client = None
@@ -102,7 +104,7 @@ def create_client():
 
 #     client = create_client()
 #     completion = client.chat.completions.create(
-#       model="gpt-3.5-turbo",
+#       model="gpt-4o-mini",
 #       messages=[
 #         {"role": "system", "content": context},
 #         {"role": "user", "content": user_query}
@@ -166,7 +168,7 @@ def create_client():
 #     # Make the API call to ChatGPT
 #     try:
 #         response = openai.ChatCompletion.create(
-#             model="gpt-3.5-turbo",
+#             model="gpt-4o-mini",
 #             messages=messages,
 #             max_tokens=150,
 #             n=1,
@@ -267,7 +269,7 @@ def summarize_chunk(chunk, client):
                      "Please provide a concise summary of this text chunk, focusing on key points and main ideas.")
 
     completion = client.chat.completions.create(
-      model="gpt-3.5-turbo",
+      model="gpt-4o-mini",
       messages=[
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": chunk}
@@ -277,59 +279,78 @@ def summarize_chunk(chunk, client):
     return completion.choices[0].message.content
 
 
+# import json
+# import re
+
+def clean_json_string(json_string):
+    # Find the first { and the last }
+    start = json_string.find('{')
+    end = json_string.rfind('}') + 1
+    if start == -1 or end == 0:
+        return None
+    json_string = json_string[start:end]
+    
+    # Replace 'Yes' with true and 'No' with false
+    json_string = re.sub(r'"Yes"', 'true', json_string)
+    json_string = re.sub(r'"No"', 'false', json_string)
+    
+    # Replace single quotes with double quotes
+    json_string = json_string.replace("'", '"')
+    
+    return json_string
+
+
+
+import json
+import logging
+
+# logging.basicConfig(level=logging.DEBUG)
+
 def consolidate_summaries(summaries, client):
-    # system_prompt = ("You are an AI assistant. You have received summaries of a book chapter. "
-    #                  "Combine these into a single coherent summary. Return the result as a JSON object with keys "
-    #                  "Quotes Around Keys and String Values: In JSON, both keys and string values must be enclosed in double quotes ("). Single quotes (') are not valid in JSON.
-    #                 "Boolean Values: Boolean values in JSON are represented as true or false (all lowercase), without quotes. If 'Yes' is intended to be a boolean, it should be replaced with true or false.
-    #                  "'title', 'summary', and 'is_main_content'. Here's an example: "
-    #                  "{'title': 'Chapter 1', 'summary': 'In this chapter, the main character...', 'is_main_content': 'Yes'}")
-
     system_prompt = ("You are an AI assistant. You have received summaries of a book chapter. "
-                 "Combine these into a single coherent summary. Return the result as a JSON object. "
-                 "When creating the JSON object, remember to: "
-                 "0. 3 keys must be included - 'title', 'summary', and 'is_main_content'. create an approprite title for the chapter, a summary and a boolean value for is_main_content. By main content it means if the chapter is the main content of the book, and not things like preface, introduction, etc."
-                 "1. Enclose keys and string values in double quotes. "
-                 "2. Use true or false for boolean values, without quotes. true and fasle should be all lowercase."
-                 "3. Ensure proper JSON structure with commas separating key-value pairs and curly braces enclosing the object. "
-                 "Here are a couple of examples of a properly formatted JSON object. Note the lowercase true and false. "
-                 "{\"title\": \"Chapter 1\", \"summary\": \"This is the copyrights page ....\", \"is_main_content\": false}"
-                 "{\"title\": \"Chapter 1\", \"summary\": \"The main character does something silly...\", \"is_main_content\": true}"
-                 "Before returning, validate the json object to ensure it has the correct keys and values. Especially that the boolean are all lowercase.")
+                     "Combine these into a single coherent summary. Return the result as a JSON object. "
+                     "The JSON object must have exactly these three keys: 'title', 'summary', and 'is_main_content'. "
+                     "Ensure that 'is_main_content' is a boolean value (true or false, not 'Yes' or 'No'). "
+                     "Use double quotes for all keys and string values. "
+                     "Do not include any text before or after the JSON object. "
+                     "Here's an example of the expected format: "
+                     '{"title": "Chapter 1", "summary": "This chapter introduces...", "is_main_content": true}')
 
-
-    # Check if summaries is a list and combine, else use it directly
     combined_summaries = " ".join(summaries) if isinstance(summaries, list) else summaries
 
-    completion = client.chat.completions.create(
-      model="gpt-3.5-turbo",
-      messages=[
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": combined_summaries}
-      ]
-    )
+    for attempt in range(1, 4):  # Try up to 3 times
+        logging.debug(f"Attempt {attempt} to get valid JSON")
+        
+        completion = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": combined_summaries}
+            ]
+        )
 
-    try:
-        # Attempt to parse the response as JSON
-        print(completion.choices[0].message.content)
-        unified_summary = json.loads(completion.choices[0].message.content)
+        response = completion.choices[0].message.content
+        logging.debug(f"Raw response from model:\n{response}")
 
-        # Validate the keys in the JSON response
-        if all(key in unified_summary for key in ["title", "summary", "is_main_content"]):
-            return unified_summary
-        else:
-            raise ValueError("Response JSON does not contain the required keys.")
+        try:
+            unified_summary = json.loads(response)
+            if all(key in unified_summary for key in ["title", "summary", "is_main_content"]):
+                logging.info("Successfully parsed valid JSON")
+                return unified_summary
+            else:
+                logging.warning("JSON parsed but missing required keys")
+                print('failed to get all the keys')
+        except json.JSONDecodeError as e:
+            logging.error(f"Failed to parse JSON: {str(e)}")
+            print('failted to parse json')
 
-    except json.JSONDecodeError:
-        # Handle case where response is not a valid JSON
-        print("The response from the model is not valid JSON.")
-        return None
-    except ValueError as e:
-        # Handle other validation errors
-        print(e)
-        return None
+        # If we're here, the response wasn't valid. Ask the model to try again.
+        combined_summaries = (f"The previous response was not valid JSON. Please try again, ensuring that you return "
+                              f"a valid JSON object with the keys 'title', 'summary', and 'is_main_content'. "
+                              f"Here was your previous attempt:\n\n{response}")
 
-
+    logging.error("Failed to get a valid JSON response after 3 attempts.")
+    return None
 
 
 def summarize_book_chapter(chapter_text):
@@ -359,7 +380,7 @@ def summarize_summaries(chapter_summaries, client=None):
                          "You have read several summaries of different parts of a book. "
                          "Please provide a concise, unified summary that captures the overall summary of the entire book.")
         completion = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": chapter_summaries}
@@ -388,7 +409,7 @@ def summarize_summaries(chapter_summaries, client=None):
 
 #     # Generate the summary for the current chapter
 #     completion = client.chat.completions.create(
-#       model="gpt-3.5-turbo",
+#       model="gpt-4o-mini",
 #       messages=[
 #         {"role": "system", "content": system_prompt},
 #         {"role": "user", "content": chapter_text}
