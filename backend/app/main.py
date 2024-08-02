@@ -1,9 +1,8 @@
 from collections import defaultdict
-from flask import Flask, jsonify, request, url_for, send_from_directory
+from flask import Flask, jsonify, request, url_for, send_from_directory, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from backend.app.process_book import book_main, lookup_book_summary, lookup_summary, all_summaries
-# from backend.app.book_pipeline import explain_the_page
+from backend.app.process_book import book_main, lookup_book_summary, lookup_summary, all_summaries, books_collection, generate_file_hash, connect_to_mongodb
 from backend.app.book_pipeline_copy import init_book_vectorize, chat_response, explain_the_page
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import OpenAIEmbeddings
@@ -15,11 +14,16 @@ import os
 import threading
 import logging
 from flask_socketio import SocketIO, emit
+from bson.binary import Binary
+from bson import ObjectId
+import io
+import datetime
 
 
 app = Flask(__name__, static_folder=os.path.join(os.getcwd(), 'static'))
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
+mongo_collection, books_collection = connect_to_mongodb()
 
 BOOKS_DIR = 'static/epubs'
 THUMBNAILS_DIR = 'static/thumbnails'
@@ -82,9 +86,9 @@ def hello():
 def clean_book_name(name):
     return ' '.join(word.capitalize() for word in name.replace('_', ' ').replace('-', ' ').split())
 
-def get_epub_cover(epub_path):
+def get_epub_cover(epub_file):
     namespaces = {'opf': 'http://www.idpf.org/2007/opf', 'u': 'urn:oasis:names:tc:opendocument:xmlns:container'}
-    with zipfile.ZipFile(epub_path, 'r') as z:
+    with zipfile.ZipFile(epub_file, 'r') as z:
         t = etree.fromstring(z.read("META-INF/container.xml"))
         rootfile_elements = t.xpath("/u:container/u:rootfiles/u:rootfile", namespaces=namespaces)
         if not rootfile_elements:
@@ -111,31 +115,45 @@ def serve_static(filename):
 
 @app.route('/get-books')
 def get_books():
-    book_files = [f for f in os.listdir(BOOKS_DIR) if f.endswith('.epub')]
-
     books = []
-    for book_file in book_files:
-        book_name = os.path.splitext(book_file)[0]
-        epub_path = os.path.join(BOOKS_DIR, book_file)
-        thumbnail_path = os.path.join(THUMBNAILS_DIR, book_name + '.jpg')
-
-        if os.path.exists(thumbnail_path):
-            thumbnail_url = url_for('static', filename=os.path.join('thumbnails', book_name + '.jpg'))
-        else:
-            thumbnail_url = None
-
-        books.append({
-            "name": clean_book_name(book_name),
-            "filename": book_file,
-            "epub": url_for('static', filename=os.path.join('epubs', book_file)),
-            "thumbnail": thumbnail_url
-        })
+    for book in books_collection.find():
+        book_data = {
+            "name": book['book_name'],
+            "filename": book['filename'],
+            "epub": url_for('serve_epub', book_id=str(book['_id'])),
+            "thumbnail": url_for('serve_thumbnail', book_id=str(book['_id'])) if book.get('cover_image') else None,
+            "upload_date": book['upload_date']
+        }
+        books.append(book_data)
 
     return jsonify(books)
 
+
+@app.route('/serve-epub/<book_id>')
+def serve_epub(book_id):
+    book = books_collection.find_one({'_id': ObjectId(book_id)})
+    if book and 'epub_content' in book:
+        return send_file(
+            io.BytesIO(book['epub_content']),
+            mimetype='application/epub+zip',
+            as_attachment=True,
+            download_name=book['filename']
+        )
+    return 'Book not found', 404
+
+@app.route('/serve-thumbnail/<book_id>')
+def serve_thumbnail(book_id):
+    book = books_collection.find_one({'_id': ObjectId(book_id)})
+    if book and 'cover_image' in book:
+        return send_file(
+            io.BytesIO(book['cover_image']),
+            mimetype='image/jpeg'
+        )
+    return 'Thumbnail not found', 404
+
+
 @app.route('/upload-epub', methods=['POST'])
 def upload_epub():
-    logging.info("Inside new upload_epub")
     if 'file' not in request.files:
         return 'No epub file part', 400
 
@@ -144,55 +162,101 @@ def upload_epub():
         return 'No selected file', 400
 
     filename = secure_filename(file.filename)
-    file_path = os.path.join(BOOKS_DIR, filename)
-    file.save(file_path)
+    book_name = os.path.splitext(filename)[0]
 
-    try:
-        cover_image = get_epub_cover(file_path)
-        book_name = os.path.splitext(os.path.basename(file_path))[0]
-        if cover_image is None:
-            raise Exception("Cover image not found")
-        cover_image_path = os.path.join(THUMBNAILS_DIR, book_name + '.jpg')
-        image = Image.open(cover_image)
-        image.save(cover_image_path, 'JPEG')
-        logging.info("Cover image saved for book: %s", book_name)
-    except Exception as e:
-        logging.warning("No cover image found or error in processing for book: %s. Error: %s", book_name, str(e))
+    # Read the file content
+    epub_content = file.read()
 
-    return jsonify({"message": "File upload successful", "filename": filename})
+    # Generate hash
+    file_hash = generate_file_hash(epub_content)
+
+    # Check if the book already exists
+    existing_book = books_collection.find_one({'file_hash': file_hash})
+    if existing_book:
+        return jsonify({
+            "message": "File already exists", 
+            "filename": existing_book['filename'], 
+            "id": str(existing_book['_id'])
+        })
+
+    # Get the cover image
+    cover_image = get_epub_cover(io.BytesIO(epub_content))
+    cover_image_binary = None
+    if cover_image:
+        cover_image_binary = Binary(cover_image.read())
+
+    # Create a document to store in MongoDB
+    book_document = {
+        'filename': filename,
+        'book_name': book_name,
+        'epub_content': Binary(epub_content),
+        'cover_image': cover_image_binary,
+        'upload_date': datetime.datetime.utcnow(),
+        'file_hash': file_hash  # Add the hash to the document
+    }
+
+    # Insert the document into MongoDB
+    result = books_collection.insert_one(book_document)
+
+    return jsonify({
+        "message": "File upload successful", 
+        "filename": filename, 
+        "id": str(result.inserted_id)
+    })
+
+# @app.route('/process-epub', methods=['POST'])
+# def process_epub():
+#     logging.info("Inside process_epub")
+#     data = request.get_json()
+#     filename = data.get('filename')
+#     book_name = data.get('name')
+
+#     if not filename:
+#         return 'No filename provided', 400
+
+#     file_path = os.path.join(BOOKS_DIR, filename)
+#     logging.info("The books_dir is %s and the filename is %s", BOOKS_DIR, filename)
+#     logging.info("The file path is: %s", file_path)
+
+#     if not os.path.exists(file_path):
+#         logging.info("The file not found")
+#         return 'File not found', 404
+
+#     bname = os.path.splitext(filename)[0]
+#     json_path = os.path.join(JSON_DIR, bname + '.json')
+#     embeddings_path = os.path.join(EMB_DIR, bname + '.npy')
+
+#     logging.info("Starting a new thread for processing the ePub file and json path is %s", json_path)
+#     thread = threading.Thread(target=book_main, args=(file_path, book_name, socketio, json_path, embeddings_path))
+#     thread.start()
+
+#     # logging.info("Starting a new thread for embedding the ePub file and embedding path is %s", EMB_DIR)
+#     # thread = threading.Thread(target=init_book_vectorize, args=(file_path, book_name, EMB_DIR))
+#     # thread.start()
+#     # init_book_vectorize(file_path, book_name, output_dir)
+
+#     return jsonify({"message": "Book processing initiated", "filename": filename})
 
 @app.route('/process-epub', methods=['POST'])
 def process_epub():
     logging.info("Inside process_epub")
     data = request.get_json()
-    filename = data.get('filename')
+    book_id = data.get('book_id')
     book_name = data.get('name')
 
-    if not filename:
-        return 'No filename provided', 400
+    if not book_id:
+        return 'No book ID provided', 400
 
-    file_path = os.path.join(BOOKS_DIR, filename)
-    logging.info("The books_dir is %s and the filename is %s", BOOKS_DIR, filename)
-    logging.info("The file path is: %s", file_path)
+    book = books_collection.find_one({'_id': ObjectId(book_id)})
+    if not book:
+        logging.info("The book not found")
+        return 'Book not found', 404
 
-    if not os.path.exists(file_path):
-        logging.info("The file not found")
-        return 'File not found', 404
-
-    bname = os.path.splitext(filename)[0]
-    json_path = os.path.join(JSON_DIR, bname + '.json')
-    embeddings_path = os.path.join(EMB_DIR, bname + '.npy')
-
-    logging.info("Starting a new thread for processing the ePub file and json path is %s", json_path)
-    thread = threading.Thread(target=book_main, args=(file_path, book_name, socketio, json_path, embeddings_path))
+    logging.info("Starting a new thread for processing the ePub file")
+    thread = threading.Thread(target=book_main, args=(book['epub_content'], book_name, socketio, book_id))
     thread.start()
 
-    # logging.info("Starting a new thread for embedding the ePub file and embedding path is %s", EMB_DIR)
-    # thread = threading.Thread(target=init_book_vectorize, args=(file_path, book_name, EMB_DIR))
-    # thread.start()
-    # init_book_vectorize(file_path, book_name, output_dir)
-
-    return jsonify({"message": "Book processing initiated", "filename": filename})
+    return jsonify({"message": "Book processing initiated", "book_id": str(book_id)})
 
 @app.route('/book-summary/<path:book_title>', methods=['GET'])
 def book_summary(book_title):
@@ -263,34 +327,28 @@ def get_all_summaries():
 
 @app.route('/initialize_book', methods=['POST'])
 def initialize_book():
-    print('goign to initialize book')
+    print('going to initialize book')
     data = request.json
-    if not data or 'book_name' not in data:
-        return jsonify({"error": "Book name is required"}), 400
+    if not data or 'book_id' not in data:
+        return jsonify({"error": "Book ID is required"}), 400
 
-    book_name = data['book_name']
-    filename = data['filename']
+    book_id = data['book_id']
     force_recreate = data.get('force_recreate', False)
 
-    # Construct the file path
-    # file_path = os.path.join(BOOKS_DIR, f"{filename}.epub")
-    file_path = os.path.join(BOOKS_DIR, filename)
-
-    print('the file path', file_path)
-
-    if not os.path.exists(file_path):
+    book = books_collection.find_one({'_id': ObjectId(book_id)})
+    if not book:
         print('book not found')
-        return jsonify({"error": "Book file not found"}), 404
+        return jsonify({"error": "Book not found"}), 404
 
     # Start the vectorization process in a separate thread
-    thread = threading.Thread(target=run_vectorization, args=(file_path, book_name, force_recreate))
+    thread = threading.Thread(target=run_vectorization, args=(book['epub_content'], book['book_name'], force_recreate, book_id))
     thread.start()
 
-    return jsonify({"message": f"Vectorization process started for {book_name}"}), 202
+    return jsonify({"message": f"Vectorization process started for {book['book_name']}"}), 202
 
 def run_vectorization(file_path, book_name, force_recreate):
     try:
-        init_book_vectorize(file_path, book_name, EMB_DIR, force_recreate=force_recreate)
+        init_book_vectorize(book, book_name, EMB_DIR, force_recreate=force_recreate)
         # You could emit a socket event here if you're using SocketIO
         # socketio.emit('vectorization_complete', {'book_name': book_name, 'status': 'success'})
     except Exception as e:
