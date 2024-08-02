@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 import json
+# from langchain_community.document_loaders import UnstructuredEPubLoader
 from langchain_community.document_loaders import UnstructuredEPubLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import OpenAIEmbeddings
@@ -14,6 +15,12 @@ from langchain.chains import RetrievalQA
 from langchain_community.llms import OpenAI
 from langchain.prompts import PromptTemplate
 from backend.app.process_book import lookup_book_summary, lookup_summary
+import io
+from bson import ObjectId
+import pickle
+import tempfile
+from ebooklib import epub
+
 
 
 load_dotenv()
@@ -21,42 +28,59 @@ load_dotenv()
 def create_client():
     return OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-def init_book_vectorize(file_path, book_name, output_dir, socketio=None, force_recreate=False):
-    index_path = os.path.join(output_dir, f"{book_name}_faiss.pkl")
+
+def init_book_vectorize(book, books_collection, socketio=None, force_recreate=False):
+    book_id = str(book['_id'])
+    book_name = book['book_name']
     
-    # Check if embeddings already exist
+    # Define the path for the FAISS index
+    index_path = os.path.join('static', 'embeddings', f"{book_name}_faiss")
+
     if os.path.exists(index_path) and not force_recreate:
-        print(f"Embeddings for {book_name} already exist. Skipping processing.")
+        print(f"Embeddings for book {book_name} already exist. Skipping processing.")
         if socketio:
-            socketio.emit('processing_complete', {'book_name': book_name, 'status': 'skipped'})
+            socketio.emit('processing_complete', {'book_id': book_id, 'status': 'skipped'})
         return
 
     print(f"Creating embeddings for book: {book_name}")
-    print(f"Embeddings will be saved at: {index_path}")
 
-    # Load EPUB
-    loader = UnstructuredEPubLoader(file_path)
-    documents = loader.load()
+    # Create a temporary file for the EPUB
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.epub') as temp_file:
+        temp_file.write(book['epub_content'])
+        temp_file_path = temp_file.name
 
-    # Clean and chunk text
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-        length_function=len,
-    )
-    chunks = text_splitter.split_documents(documents)
+    try:
+        # Load EPUB using UnstructuredEPubLoader
+        loader = UnstructuredEPubLoader(temp_file_path)
+        documents = loader.load()
 
-    # Initialize OpenAI embeddings
-    embeddings = OpenAIEmbeddings()
+        # Clean and chunk text
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len,
+        )
+        chunks = text_splitter.split_documents(documents)
 
-    # Create and save FAISS index
-    vectorstore = FAISS.from_documents(chunks, embeddings)
-    vectorstore.save_local(index_path)
+        # Initialize OpenAI embeddings
+        embeddings = OpenAIEmbeddings()
 
-    # if socketio:
-    #     socketio.emit('processing_complete', {'book_name': book_name, 'status': 'created'})
+        # Create FAISS index
+        vectorstore = FAISS.from_documents(chunks, embeddings)
 
-    print(f"Completed processing {book_name}")
+        # Save the FAISS index
+        vectorstore.save_local(index_path)
+
+        if socketio:
+            socketio.emit('processing_complete', {'book_id': book_id, 'status': 'created'})
+
+        print(f"Completed processing book: {book_name}")
+
+    finally:
+        # Delete the temporary EPUB file
+        os.unlink(temp_file_path)
+
+    return index_path
 
 
 def chat_response(query, vectorstore, book_name, history):

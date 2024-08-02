@@ -122,7 +122,9 @@ def get_books():
             "filename": book['filename'],
             "epub": url_for('serve_epub', book_id=str(book['_id'])),
             "thumbnail": url_for('serve_thumbnail', book_id=str(book['_id'])) if book.get('cover_image') else None,
-            "upload_date": book['upload_date']
+            "upload_date": book['upload_date'],
+            "file_hash": book['file_hash'],
+            "book_id": str(book['_id'])
         }
         books.append(book_data)
 
@@ -173,6 +175,7 @@ def upload_epub():
     # Check if the book already exists
     existing_book = books_collection.find_one({'file_hash': file_hash})
     if existing_book:
+        print('book already exists')
         return jsonify({
             "message": "File already exists", 
             "filename": existing_book['filename'], 
@@ -239,12 +242,14 @@ def upload_epub():
 
 @app.route('/process-epub', methods=['POST'])
 def process_epub():
-    logging.info("Inside process_epub")
+    logging.info("Inside process_epub, stfu fucker")
     data = request.get_json()
     book_id = data.get('book_id')
     book_name = data.get('name')
+    print('heloo hello')
 
     if not book_id:
+        print('not found book id')
         return 'No book ID provided', 400
 
     book = books_collection.find_one({'_id': ObjectId(book_id)})
@@ -253,6 +258,7 @@ def process_epub():
         return 'Book not found', 404
 
     logging.info("Starting a new thread for processing the ePub file")
+    print('what the hell')
     thread = threading.Thread(target=book_main, args=(book['epub_content'], book_name, socketio, book_id))
     thread.start()
 
@@ -329,6 +335,7 @@ def get_all_summaries():
 def initialize_book():
     print('going to initialize book')
     data = request.json
+    print(data)
     if not data or 'book_id' not in data:
         return jsonify({"error": "Book ID is required"}), 400
 
@@ -340,20 +347,25 @@ def initialize_book():
         print('book not found')
         return jsonify({"error": "Book not found"}), 404
 
+    # Check if FAISS index already exists in MongoDB
+    if 'faiss_index' in book and not force_recreate:
+        return jsonify({"message": f"FAISS index already exists for {book['book_name']}"}), 200
+
     # Start the vectorization process in a separate thread
-    thread = threading.Thread(target=run_vectorization, args=(book['epub_content'], book['book_name'], force_recreate, book_id))
+    thread = threading.Thread(target=run_vectorization, args=(book, force_recreate))
     thread.start()
 
     return jsonify({"message": f"Vectorization process started for {book['book_name']}"}), 202
 
-def run_vectorization(file_path, book_name, force_recreate):
+
+def run_vectorization(book, force_recreate):
     try:
-        init_book_vectorize(book, book_name, EMB_DIR, force_recreate=force_recreate)
+        init_book_vectorize(book, books_collection, force_recreate=force_recreate)
         # You could emit a socket event here if you're using SocketIO
-        # socketio.emit('vectorization_complete', {'book_name': book_name, 'status': 'success'})
+        # socketio.emit('vectorization_complete', {'book_name': book['book_name'], 'status': 'success'})
     except Exception as e:
-        print(f"Error vectorizing {book_name}: {str(e)}")
-        # socketio.emit('vectorization_error', {'book_name': book_name, 'error': str(e)})
+        print(f"Error vectorizing {book['book_name']}: {str(e)}")
+        # socketio.emit('vectorization_error', {'book_name': book['book_name'], 'error': str(e)})
 
 
 def manage_conversation_history(book_name, question, answer, max_history=2):

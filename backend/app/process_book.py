@@ -15,6 +15,8 @@ import certifi
 import threading
 import time
 import hashlib
+import io
+
 
 
 
@@ -58,7 +60,8 @@ def generate_file_hash(file_content):
 
 
 def process_epub(book, book_name, collection, socketio, rewrite=False):
-    logging.info("Inside process_epub")
+    logging.info("Inside process_epub motherfucker")
+    print('wtf motherfucker')
     # book = epub.read_epub(file_path)
     chapter_count = 0
     chapter_summaries = []
@@ -273,12 +276,24 @@ def log_memory_usage(stage=""):
     logging.info(f"{stage} - Memory usage: {memory_info.rss / 1024 ** 2:.2f} MB")
 
 
+import tempfile
+
 def book_main(epub_content, book_name, socketio, book_id):
-    book = epub.read_epub(io.BytesIO(epub_content))    
     # logging.info('Processing book: %s', file_path)
     collection, books_collection = connect_to_mongodb()
     create_indexes(collection, books_collection)
-    process_epub(book, book_name, collection, socketio, False)
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.epub') as temp_file:
+        temp_file.write(epub_content)
+        temp_file_path = temp_file.name    
+
+    try:
+        # Load EPUB
+        book = epub.read_epub(temp_file_path)
+        process_epub(book, book_name, collection, socketio, False)
+
+    finally:
+        # Delete the temporary file
+        os.unlink(temp_file_path)
     # embeddings = None
 
     # if os.path.exists(embeddings_path):
