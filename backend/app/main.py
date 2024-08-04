@@ -118,7 +118,7 @@ def get_books():
     books = []
     for book in books_collection.find():
         book_data = {
-            "name": book['book_name'],
+            "name": clean_book_name(book['book_name']),
             "filename": book['filename'],
             "epub": url_for('serve_epub', book_id=str(book['_id'])),
             "thumbnail": url_for('serve_thumbnail', book_id=str(book['_id'])) if book.get('cover_image') else None,
@@ -165,6 +165,8 @@ def upload_epub():
 
     filename = secure_filename(file.filename)
     book_name = os.path.splitext(filename)[0]
+    book_name = clean_book_name(book_name)
+    print("the book name is ", book_name)
 
     # Read the file content
     epub_content = file.read()
