@@ -37,7 +37,7 @@ def init_book_vectorize(book, books_collection, socketio=None, force_recreate=Fa
     index_path = os.path.join('static', 'embeddings', f"{book_name}_faiss")
 
     if os.path.exists(index_path) and not force_recreate:
-        print(f"Embeddings for book {book_name} already exist. Skipping processing.")
+        print(f"motherfucker Embeddings for book {book_name} already exist. Skipping processing.")
         if socketio:
             socketio.emit('processing_complete', {'book_id': book_id, 'status': 'skipped'})
         return

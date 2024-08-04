@@ -398,7 +398,9 @@ def chat_with_book():
         return jsonify({"error": "Query and book name must be provided"}), 400
 
     # Construct file path
-    index_path = os.path.join(EMB_DIR, f"{book_name}_faiss.pkl")
+    # index_path = os.path.join(EMB_DIR, f"{book_name}_faiss.pkl")
+    index_path = os.path.join('static', 'embeddings', f"{book_name}_faiss")
+
 
     # Check if required file exists
     if not os.path.exists(index_path):
