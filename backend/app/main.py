@@ -2,7 +2,7 @@ from collections import defaultdict
 from flask import Flask, jsonify, request, url_for, send_from_directory, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
-from backend.app.process_book import book_main, lookup_book_summary, lookup_summary, all_summaries, books_collection, generate_file_hash, connect_to_mongodb
+from backend.app.process_book import book_main, lookup_book_summary, lookup_summary, all_summaries, generate_file_hash, connect_to_mongodb
 from backend.app.book_pipeline_copy import init_book_vectorize, chat_response, explain_the_page
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import OpenAIEmbeddings
@@ -362,7 +362,7 @@ def initialize_book():
 
 def run_vectorization(book, force_recreate):
     try:
-        init_book_vectorize(book, books_collection, force_recreate=force_recreate)
+        init_book_vectorize(book, force_recreate=force_recreate)
         # You could emit a socket event here if you're using SocketIO
         # socketio.emit('vectorization_complete', {'book_name': book['book_name'], 'status': 'success'})
     except Exception as e:
@@ -394,18 +394,25 @@ def chat_with_book():
     print('Processing chat request')
     data = request.json
     query = data.get('query')
+    print('the data is ', data)
     book_name = data.get('book_name')
+    file_name = data.get('file_name')
+
+    book_id = data['book_id']
+    book = books_collection.find_one({'_id': ObjectId(book_id)})
     
     if not query or not book_name:
         return jsonify({"error": "Query and book name must be provided"}), 400
 
     # Construct file path
     # index_path = os.path.join(EMB_DIR, f"{book_name}_faiss.pkl")
-    index_path = os.path.join('static', 'embeddings', f"{book_name}_faiss")
+    index_path = os.path.join('static', 'embeddings', f"{book['book_name']}_faiss")
+    print('the index path', index_path)
 
 
     # Check if required file exists
     if not os.path.exists(index_path):
+        print('not found, going to throw error')
         return jsonify({"error": "Book embeddings not found"}), 404
 
     try:

@@ -29,7 +29,8 @@ def create_client():
     return OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 
-def init_book_vectorize(book, books_collection, socketio=None, force_recreate=False):
+def init_book_vectorize(book, socketio=None, force_recreate=False):
+    print(' in there book vectorize')
     book_id = str(book['_id'])
     book_name = book['book_name']
     
