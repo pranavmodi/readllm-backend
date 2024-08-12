@@ -12,8 +12,6 @@ import re
 import json
 import logging
 
-
-
 global_client = None
 
 def create_client():
@@ -69,7 +67,6 @@ def split_into_chunks(chapter_text, max_token_length=3000, overlap_length=500):
 
     return chunks
 
-
 def summarize_chunk(chunk, client):
     system_prompt = ("You are an AI assistant skilled in summarizing book chapters. "
                      "Please provide a concise summary of this text chunk, focusing on key points and main ideas.")
@@ -85,28 +82,6 @@ def summarize_chunk(chunk, client):
     return completion.choices[0].message.content
 
 
-def clean_json_string(json_string):
-    # Find the first { and the last }
-    start = json_string.find('{')
-    end = json_string.rfind('}') + 1
-    if start == -1 or end == 0:
-        return None
-    json_string = json_string[start:end]
-    
-    # Replace 'Yes' with true and 'No' with false
-    json_string = re.sub(r'"Yes"', 'true', json_string)
-    json_string = re.sub(r'"No"', 'false', json_string)
-    
-    # Replace single quotes with double quotes
-    json_string = json_string.replace("'", '"')
-    
-    return json_string
-
-
-
-
-
-# logging.basicConfig(level=logging.DEBUG)
 
 def consolidate_summaries(summaries, client):
     system_prompt = ("You are an AI assistant. You have received summaries of a book chapter. "
@@ -224,4 +199,23 @@ def summarize_summaries(chapter_summaries, client=None):
 
 #     return cumulative_book_summary
 
+# def clean_json_string(json_string):
+#     # Find the first { and the last }
+#     start = json_string.find('{')
+#     end = json_string.rfind('}') + 1
+#     if start == -1 or end == 0:
+#         return None
+#     json_string = json_string[start:end]
+    
+#     # Replace 'Yes' with true and 'No' with false
+#     json_string = re.sub(r'"Yes"', 'true', json_string)
+#     json_string = re.sub(r'"No"', 'false', json_string)
+    
+#     # Replace single quotes with double quotes
+#     json_string = json_string.replace("'", '"')
+    
+#     return json_string
+
+
+# logging.basicConfig(level=logging.DEBUG)
 
