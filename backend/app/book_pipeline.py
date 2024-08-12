@@ -11,7 +11,6 @@ import pickle
 from dotenv import load_dotenv
 import openai
 from openai import OpenAI
-import re
 
 global_client = None
 api_key = None
