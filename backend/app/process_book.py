@@ -18,8 +18,6 @@ import hashlib
 import io
 
 
-
-
 summary_cache = {}
 cache_lock = threading.Lock()
 
